@@ -1,0 +1,43 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net45;netcoreapp2.0;netstandard2.0;</TargetFrameworks>
+    <LangVersion>5</LangVersion>
+  </PropertyGroup>
+  <PropertyGroup>
+    <Version>0.8.0</Version>
+    <Authors>hnx8(H.Takahashi)</Authors>
+    <Copyright>Copyright (C) 2019-2019 hnx8(H.Takahashi)</Copyright>
+    <PackageProjectUrl>https://github.com/hnx8/DapperAid</PackageProjectUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
+    <PackageTags>Dapper, SQL-Generation, CRUD, Query Builder, ORM, Mapping</PackageTags>
+    <Product>DapperAid - SQL CRUD Query-Builder/Executor for Dapper</Product>
+    <Title>DapperAid - SQL CRUD Query-Builder/Executor for Dapper</Title>
+    <Description>DapperによるDBのSelect,Insert,Update,Delete操作を拡張メソッドで提供します。
+属性/ラムダ式の指定により、SQLを記述することなくDBデータを参照更新できます。
+This library provides Select, Insert, Update, Delete operations of the database as Extension Methods.
+By specifying Attribute / Lambda-Expression, You can perform database query and update using Dapper without writing SQL.
+</Description>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)'=='Release'">
+    <DebugType>none</DebugType>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <DocumentationFile>bin\$(Configuration)\DapperAid.xml</DocumentationFile>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='Debug'">
+    <DocumentationFile></DocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Dapper" Version="1.50.2" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)'=='netstandard2.0'">
+    <PackageReference Include="System.ComponentModel.Annotations" Version="4.4.0" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)'=='net45'">
+    <Reference Include="System.ComponentModel.DataAnnotations" />
+    <Reference Include="System.Transactions" />
+  </ItemGroup>
+
+</Project>
