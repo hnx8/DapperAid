@@ -173,5 +173,27 @@ namespace DapperAidTest
 
             }
         }
+
+        /// <summary>
+        /// SQL各種
+        /// </summary>
+        [TestMethod]
+        public void SqlTest()
+        {
+            QueryBuilder.DefaultInstance = new QueryBuilder.SQLite();
+
+            using (IDbConnection connection = GetSqliteDbConnection())
+            {
+                var createTableSql = DDLAttribute.GenerateCreateSQL<Member>();
+                connection.Execute(createTableSql);
+
+                var list1 = connection.Select<Member>(r => 
+                    (r.Name == ToSql.In(new[] { "A", "B" }) 
+                    || r.Name != ToSql.Like("%TEST%") 
+                    || r.Name == ToSql.Between("1", "5")
+                    || DateTime.Now < r.CreatedAt));
+
+            }
+        }
     }
 }

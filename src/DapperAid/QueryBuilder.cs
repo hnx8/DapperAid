@@ -93,7 +93,7 @@ namespace DapperAid
             var alreadyUsedNames = parameters.ParameterNames.ToArray();
             var i = alreadyUsedNames.Length;
             var parameterName = proposedName;
-            while (alreadyUsedNames.Contains(parameterName))
+            while (string.IsNullOrWhiteSpace(parameterName) || alreadyUsedNames.Contains(parameterName))
             {   // すでに同名のパラメータが登録されている場合は、適当な連番によるパラメータバインドを試みる
                 parameterName = "P" + i.ToString("D2");
                 i++;
@@ -378,7 +378,7 @@ namespace DapperAid
             Func<Expression, TableInfo.Column> getIfOperandIsConditionColumn = (exp) =>
             {
                 var me = ExpressionHelper.CastTo<MemberExpression>(exp);
-                if (me == null || me.Expression.NodeType != ExpressionType.Parameter)
+                if (me == null || me.Expression == null || me.Expression.NodeType != ExpressionType.Parameter)
                 {   // ラムダ式の引数についてのメンバーでなければ、Where条件となるカラムとはみなさない
                     return null;
                 }
@@ -496,9 +496,9 @@ namespace DapperAid
             {   // 両辺ともカラム名指定の場合はパラメータ値取得不要、両辺のカラム名に基づき条件式を組み立て
                 return leftMember.Name + op + rightMember.Name;
             }
+
             var condColumn = leftMember ?? rightMember;
             var valueExpression = ExpressionHelper.CastTo<Expression>(condColumn == leftMember ? binaryExpr.Right : binaryExpr.Left);
-
             if (valueExpression is MethodCallExpression)
             {   // 値指定時に特定のToSqlメソッドを通している場合は、メソッドに応じたSQLを組み立てる
                 var method = (valueExpression as MethodCallExpression).Method;
@@ -541,24 +541,36 @@ namespace DapperAid
                     }
                 }
             }
-
             var value = ExpressionHelper.EvaluateValue(valueExpression);
-            return (value == null)
-                ? condColumn.Name + " is" + (opIsNot ? " not" : "") + " null"
-                : condColumn.Name + op + AddParameter(parameters, condColumn.PropertyInfo.Name, value) + opEnd;
+
+            if (value == null)
+            {
+                return condColumn.Name + " is" + (opIsNot ? " not" : "") + " null";
+            }
+            else
+            {
+                var bindedValueSql = AddParameter(parameters, condColumn.PropertyInfo.Name, value);
+                return (condColumn == leftMember
+                    ? condColumn.Name + op + bindedValueSql
+                    : bindedValueSql + op + condColumn.Name);
+            }
         }
 
         /// <summary>
-        /// Where条件のIn条件式「[カラム] in([バインド値])」を組み立てます。
+        /// Where条件のIn条件式「[カラム] in [バインド値]」を組み立てます。
         /// </summary>
         /// <param name="parameters">パラメーターオブジェクト</param>
         /// <param name="column">対象カラム</param>
         /// <param name="opIsNot">not条件として組み立てるべきならtrue</param>
         /// <param name="values">バインドする値</param>
         /// <returns>In条件式</returns>
+        /// <remarks>
+        /// サブクラスによりオーバーライドされることがあります（Oracle/Postgresでは生成内容が変わります）
+        /// </remarks>
         protected virtual string BuildWhereIn(DynamicParameters parameters, TableInfo.Column column, bool opIsNot, object values)
         {
-            return column.Name + (opIsNot ? " not" : "") + " in(" + AddParameter(parameters, column.PropertyInfo.Name, values) + ")";
+            return column.Name + (opIsNot ? " not" : "") + " in " + AddParameter(parameters, column.PropertyInfo.Name, values);
+            // →DapperのList Support機能により、カッコつきin句「in (@xx1, @xx2, ...)」へ展開されたうえで実行される
         }
 
         #endregion
