@@ -19,7 +19,7 @@ namespace DapperAid
             public override char ParameterMarker { get { return ':'; } }
 
             /// <summary>
-            /// 指定されたテーブルにレコードを挿入し、[InsertSQL(RetrieveInsertedId = true)]属性で指定された自動連番カラムに採番されたIDを当該プロパティにセットします。
+            /// 指定されたレコードを挿入し、[InsertSQL(RetrieveInsertedId = true)]属性で指定された自動連番カラムに採番されたIDを当該プロパティにセットします。
             /// (Oracleはoutパラメータより把握)
             /// </summary>
             public override int InsertAndRetrieveId<T>(T data, Expression<Func<T, dynamic>> targetColumns, IDbConnection connection, IDbTransaction transaction, int? timeout = null)

@@ -4,7 +4,7 @@
     <LangVersion>5</LangVersion>
   </PropertyGroup>
   <PropertyGroup>
-    <Version>0.8.0</Version>
+    <Version>0.8.1</Version>
     <Authors>hnx8(H.Takahashi)</Authors>
     <Copyright>Copyright (C) 2019-2019 hnx8(H.Takahashi)</Copyright>
     <PackageProjectUrl>https://github.com/hnx8/DapperAid</PackageProjectUrl>
@@ -13,11 +13,11 @@
     <PackageTags>Dapper, SQL-Generation, CRUD, Query Builder, ORM, Mapping</PackageTags>
     <Product>DapperAid - SQL CRUD Query-Builder/Executor for Dapper</Product>
     <Title>DapperAid - SQL CRUD Query-Builder/Executor for Dapper</Title>
-    <Description>DapperによるDBのSelect,Insert,Update,Delete操作を拡張メソッドで提供します。
-属性/ラムダ式の指定により、SQLを記述することなくDBデータを参照更新できます。
-This library provides Select, Insert, Update, Delete operations of the database as Extension Methods.
-By specifying Attribute / Lambda-Expression, You can perform database query and update using Dapper without writing SQL.
-</Description>
+    <Description>DBデータのSelect,Insert,Update,Delete操作を拡張メソッドで提供します。
+属性/ラムダ式の指定をもとに内蔵クエリビルダが実行SQLを自動生成します。SQL記述不要でDBを参照更新できます。
+
+This library provides CRUD operations of the database as Extension Methods.
+By specifying Attribute / Lambda-Expression, You can perform database query and update using Dapper without writing SQL.</Description>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)'=='Release'">

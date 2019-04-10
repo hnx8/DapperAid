@@ -578,7 +578,7 @@ namespace DapperAid
         #region SQL実行(DBMS固有) ----------------------------------------------
 
         /// <summary>
-        /// 指定されたテーブルにレコードを挿入し、[InsertSQL(RetrieveInsertedId = true)]属性で指定された自動連番カラムに採番されたIDを当該プロパティにセットします。
+        /// 指定されたレコードを挿入し、[InsertSQL(RetrieveInsertedId = true)]属性で指定された自動連番カラムに採番されたIDを当該プロパティにセットします。
         /// </summary>
         /// <param name="data">挿入するレコード</param>
         /// <param name="targetColumns">値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
@@ -622,7 +622,7 @@ namespace DapperAid
         }
 
         /// <summary>
-        /// 指定されたテーブルにレコードを一括挿入します。
+        /// 指定されたレコードを一括挿入します。
         /// </summary>
         /// <param name="data">挿入するレコード（複数件）</param>
         /// <param name="targetColumns">値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>

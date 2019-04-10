@@ -30,7 +30,7 @@ namespace DapperAid
             }
 
             /// <summary>
-            /// 標準的な一括InsertのSQLを用いて、指定されたテーブルにレコードを一括挿入します。
+            /// 標準的な一括InsertのSQLを用いて、指定されたレコードを一括挿入します。
             /// </summary>
             public override int InsertRows<T>(IEnumerable<T> data, Expression<System.Func<T, dynamic>> targetColumns, IDbConnection connection, IDbTransaction transaction, int? timeout = null)
             {

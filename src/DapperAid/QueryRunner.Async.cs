@@ -41,7 +41,7 @@ namespace DapperAid
         }
 
         /// <summary>
-        /// 指定されたテーブルからレコードを非同期で取得します。
+        /// 指定されたテーブルからレコードのリストを非同期で取得します。
         /// </summary>
         /// <param name="where">レコード絞り込み条件（絞り込みを行わず全件対象とする場合はnull）</param>
         /// <param name="targetColumns">値取得対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
@@ -60,7 +60,7 @@ namespace DapperAid
 
 
         /// <summary>
-        /// 指定されたテーブルにレコードを非同期で挿入します。
+        /// 指定された値でレコードを非同期で挿入します。
         /// </summary>
         /// <param name="values">設定値を初期化子で指定するラムダ式。例：「<c>() => new Tbl1 { Key1 = 1, Value = 99 }</c>」</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
@@ -73,7 +73,7 @@ namespace DapperAid
         }
 
         /// <summary>
-        /// 指定されたテーブルにレコードを非同期で挿入します。
+        /// 指定されたレコードを非同期で挿入します。
         /// </summary>
         /// <param name="data">挿入するレコード</param>
         /// <param name="targetColumns">値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
@@ -96,7 +96,7 @@ namespace DapperAid
         }
 
         /// <summary>
-        /// 指定されたテーブルにレコードを非同期で一括挿入します。
+        /// 指定されたレコードを非同期で一括挿入します。
         /// </summary>
         /// <param name="data">挿入するレコード（複数件）</param>
         /// <param name="targetColumns">値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
@@ -111,7 +111,7 @@ namespace DapperAid
 
 
         /// <summary>
-        /// 指定された条件のレコードを非同期で更新します。
+        /// 指定された条件にマッチするレコードについて、指定されたカラムの値を非同期で更新します。
         /// </summary>
         /// <param name="values">更新値を初期化子で指定するラムダ式。例：「<c>() => new Tbl1 { Value1 = 99, Flg = true }</c>」</param>
         /// <param name="where">更新対象レコードの条件（全件対象とする場合はnull）</param>
@@ -140,7 +140,7 @@ namespace DapperAid
         }
 
         /// <summary>
-        /// 指定された条件のレコードを非同期で削除します。
+        /// 指定された条件にマッチするレコードを非同期で削除します。
         /// </summary>
         /// <param name="where">削除対象レコードの条件</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
