@@ -44,14 +44,17 @@ namespace DapperAid.Helpers
             /// <summary>Select時に使用するカラム別名（識別子エスケープ済）、別名設定なしの場合はnull</summary>
             public string Alias { get; private set; }
 
-            /// <summary>Insert時に値設定対象カラムとして指定するか否か</summary>
+            /// <summary>レコード指定Insert時に値設定対象カラムとして指定するか否か</summary>
             public bool Insert { get; private set; }
-            /// <summary>Insert時に値として設定するSQL。nullの場合はパラメータバインド値による更新</summary>
+            /// <summary>レコード指定Insert時に値として設定するSQL。nullの場合はパラメータバインド値による更新</summary>
             public string InsertSQL { get; private set; }
 
-            /// <summary>Update時に値を更新するか否か</summary>
+            /// <summary>レコード指定Update時に楽観的同時実行チェック対象としてWhere条件を組み立てるか否か</summary>
+            public bool ConcurrencyCheck { get; private set; }
+
+            /// <summary>レコード指定Update時に値を更新するか否か</summary>
             public bool Update { get; private set; }
-            /// <summary>Update時に値として設定するSQL。nullの場合はパラメータバインド値による更新</summary>
+            /// <summary>レコード指定Update時に値として設定するSQL。nullの場合はパラメータバインド値による更新</summary>
             public string UpdateSQL { get; private set; }
 
             /// <summary>
@@ -72,8 +75,13 @@ namespace DapperAid.Helpers
                 this.Insert = (insertAttr == null) ? true : insertAttr.SetValue;
                 this.InsertSQL = (insertAttr == null || string.IsNullOrWhiteSpace(insertAttr.Sql)) ? null : insertAttr.Sql;
 
+                var concurrencyAttr = prop.GetCustomAttribute<ConcurrencyCheckAttribute>();
+                this.ConcurrencyCheck = (concurrencyAttr != null);
+
                 var updateAttr = prop.GetCustomAttribute<UpdateSqlAttribute>();
-                this.Update = (updateAttr == null) ? true : updateAttr.SetValue;
+                this.Update = (updateAttr == null)
+                    ? (!this.IsKey && !this.ConcurrencyCheck)
+                    : updateAttr.SetValue;
                 this.UpdateSQL = (updateAttr == null || string.IsNullOrWhiteSpace(updateAttr.Sql)) ? null : updateAttr.Sql;
             }
         }

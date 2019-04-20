@@ -1,5 +1,4 @@
 ﻿using System;
-using System.ComponentModel;
 using System.Linq;
 using System.Reflection;
 using System.Text;
@@ -101,7 +100,7 @@ namespace DapperAid.Ddl
         /// <remarks>
         /// 以下の内容のTSVが生成されます。
         /// <para>・基本情報（テーブルにマッピングされたクラス名、取得元/更新先テーブル、SelectSQL生成例）</para>
-        /// <para>・各列の情報（概要, プロパティ名, プロパティ型, Keyか, DBカラム名, DB型, Insert設定値, Update設定値)</para>
+        /// <para>・各列の情報（表示名, プロパティ名, プロパティ型, Keyか, DBカラム名, DB型, Insert設定値, Update設定値)</para>
         /// </remarks>
         public static string GenerateTableDefTSV<T>(QueryBuilder queryBuilder = null)
         {
@@ -119,7 +118,7 @@ namespace DapperAid.Ddl
             sb.AppendLine(typeof(T).Name);
             sb.AppendLine("\tTable:\t" + escape(table.Name));
             sb.AppendLine("\t-------\t"
-                + "Description\t"
+                + "DisplayName\t"
                 + "Property\t"
                 + "DataType\t"
                 + "Key\t"
@@ -132,13 +131,15 @@ namespace DapperAid.Ddl
                 sb.Append("\tColumn:");
                 sb.Append("\t");
                 sb.Append(string.Join("/",
-                    column.PropertyInfo.GetCustomAttributes<DescriptionAttribute>(true).Select(a => a.Description).ToArray()));
+                    column.PropertyInfo.GetCustomAttributes<System.ComponentModel.DataAnnotations.DisplayAttribute>(true).Select(a => a.Name).ToArray()));
                 sb.Append("\t");
                 sb.Append(column.PropertyInfo.Name);
                 sb.Append("\t");
                 sb.Append(column.PropertyInfo.PropertyType.ToString());
                 sb.Append("\t");
-                sb.Append((column.IsKey ? "Key" : "") + (table.RetrieveInsertedIdColumn == column ? "(ID)" : ""));
+                sb.Append(
+                    (column.IsKey ? "Key" : (column.ConcurrencyCheck ? "" : "ConcurrencyCheck"))
+                    + (table.RetrieveInsertedIdColumn == column ? "(ID)" : ""));
                 sb.Append("\t");
                 sb.Append(column.Alias == null ? column.PropertyInfo.Name : escape(column.Name));
                 sb.Append("\t");

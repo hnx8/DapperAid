@@ -75,7 +75,7 @@ namespace DapperAid.DbAccess
         {
             try
             {
-                Stopwatch sw = Stopwatch.StartNew();
+                var sw = Stopwatch.StartNew();
                 DbTransaction ret = new Transaction(this, _innerConnection.BeginTransaction());
                 this.TraceLog("BeginTransaction", sw.ElapsedMilliseconds);
                 return ret;
@@ -209,7 +209,7 @@ namespace DapperAid.DbAccess
             {
                 try
                 {
-                    Stopwatch sw = Stopwatch.StartNew();
+                    var sw = Stopwatch.StartNew();
                     _innerTransaction.Commit();
                     _conn.TraceLog("Commit", sw.ElapsedMilliseconds);
                     _isCompleted = true;
@@ -228,7 +228,7 @@ namespace DapperAid.DbAccess
             {
                 try
                 {
-                    Stopwatch sw = Stopwatch.StartNew();
+                    var sw = Stopwatch.StartNew();
                     _innerTransaction.Rollback();
                     _conn.TraceLog("Rollback", sw.ElapsedMilliseconds);
                     _isCompleted = true;
@@ -248,7 +248,7 @@ namespace DapperAid.DbAccess
             {
                 try
                 {
-                    Stopwatch sw = (_isCompleted ? null : Stopwatch.StartNew());
+                    var sw = (_isCompleted ? null : Stopwatch.StartNew());
                     _innerTransaction.Dispose();
                     if (sw != null)
                     {
@@ -309,7 +309,7 @@ namespace DapperAid.DbAccess
                 set
                 {   // ラップされているDbTransactionが引き渡された場合は、生のDbCommandにはラップされていないDbTransactionを設定する
                     _tran = value;
-                    Transaction wrapped = (value as Transaction);
+                    var wrapped = (value as Transaction);
                     _innerCommand.Transaction = (wrapped != null) ? wrapped._innerTransaction : value;
                 }
             }
@@ -333,14 +333,14 @@ namespace DapperAid.DbAccess
             {
                 try
                 {
-                    Stopwatch sw = Stopwatch.StartNew();
-                    DbDataReader ret = _innerCommand.ExecuteReader(behavior);
+                    var sw = Stopwatch.StartNew();
+                    var ret = _innerCommand.ExecuteReader(behavior);
                     _conn.TraceLog((ret.HasRows ? "HasResults" : "NoResult"), sw.ElapsedMilliseconds, _innerCommand);
                     return ret;
                 }
                 catch (Exception ex)
                 {   // エラーログを出力し、スタックトレースを切って再throw
-                    _conn.ErrorLog(ex);
+                    _conn.ErrorLog(ex, this);
                     throw ex;
                 }
             }
@@ -352,14 +352,14 @@ namespace DapperAid.DbAccess
             {
                 try
                 {
-                    Stopwatch sw = Stopwatch.StartNew();
-                    int ret = _innerCommand.ExecuteNonQuery();
+                    var sw = Stopwatch.StartNew();
+                    var ret = _innerCommand.ExecuteNonQuery();
                     _conn.TraceLog("Affected=" + ret.ToString(), sw.ElapsedMilliseconds, _innerCommand);
                     return ret;
                 }
                 catch (Exception ex)
                 {   // エラーログを出力し、スタックトレースを切って再throw
-                    _conn.ErrorLog(ex);
+                    _conn.ErrorLog(ex, this);
                     throw ex;
                 }
             }
@@ -371,14 +371,14 @@ namespace DapperAid.DbAccess
             {
                 try
                 {
-                    Stopwatch sw = Stopwatch.StartNew();
-                    object ret = _innerCommand.ExecuteScalar();
+                    var sw = Stopwatch.StartNew();
+                    var ret = _innerCommand.ExecuteScalar();
                     _conn.TraceLog("Value=" + (ret != null ? ret.ToString() : "null"), sw.ElapsedMilliseconds, _innerCommand);
                     return ret;
                 }
                 catch (Exception ex)
                 {   // エラーログを出力し、スタックトレースを切って再throw
-                    _conn.ErrorLog(ex);
+                    _conn.ErrorLog(ex, this);
                     throw ex;
                 }
             }

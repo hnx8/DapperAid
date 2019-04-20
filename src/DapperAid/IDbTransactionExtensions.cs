@@ -24,17 +24,18 @@ namespace DapperAid
         }
 
         /// <summary>
-        /// 指定されたテーブルから特定のレコード１件を取得します。
+        /// 指定されたレコードを取得します。
         /// </summary>
         /// <param name="transaction">DBトランザクション</param>
         /// <param name="keyValues">レコード特定Key値を初期化子で指定するラムダ式。例：「<c>() => new Tbl1 { Key1 = 1, Key2 = 99 }</c>」</param>
         /// <param name="targetColumns">値取得対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
+        /// <param name="otherClauses">SQL文の末尾に付加するforUpdate指定などがあれば、その内容</param>
         /// <param name="timeout">タイムアウト時間</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>取得したレコード（１件、レコード不存在の場合はnull）</returns>
-        public static T Select<T>(this IDbTransaction transaction, Expression<Func<T>> keyValues, Expression<Func<T, dynamic>> targetColumns = null, int? timeout = null)
+        public static T Select<T>(this IDbTransaction transaction, Expression<Func<T>> keyValues, Expression<Func<T, dynamic>> targetColumns = null, string otherClauses = null, int? timeout = null)
         {
-            return new QueryRunner(transaction, timeout).Select(keyValues, targetColumns);
+            return new QueryRunner(transaction, timeout).Select(keyValues, targetColumns, otherClauses);
         }
 
         /// <summary>
@@ -46,7 +47,7 @@ namespace DapperAid
         /// <param name="otherClauses">SQL文のwhere条件より後ろに付加するorderBy条件/limit/offset指定などがあれば、その内容</param>
         /// <param name="timeout">タイムアウト時間</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
-        /// <returns>取得したレコード</returns>
+        /// <returns>レコードのリスト</returns>
         public static IReadOnlyList<T> Select<T>(this IDbTransaction transaction, Expression<Func<T, bool>> where = null, Expression<Func<T, dynamic>> targetColumns = null, string otherClauses = null, int? timeout = null)
         {
             return new QueryRunner(transaction, timeout).Select(where, targetColumns, otherClauses);

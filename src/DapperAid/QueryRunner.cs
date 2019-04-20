@@ -77,17 +77,19 @@ namespace DapperAid
         }
 
         /// <summary>
-        /// 指定されたテーブルから特定のレコード１件を取得します。
+        /// 指定されたレコードを取得します。
         /// </summary>
         /// <param name="keyValues">レコード特定Key値を初期化子で指定するラムダ式。例：「<c>() => new Tbl1 { Key1 = 1, Key2 = 99 }</c>」</param>
         /// <param name="targetColumns">値取得対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
+        /// <param name="otherClauses">SQL文の末尾に付加するforUpdate指定などがあれば、その内容</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
-        /// <returns>取得したレコード（１件、レコード不存在の場合はnull）</returns>
-        public T Select<T>(Expression<Func<T>> keyValues, Expression<Func<T, dynamic>> targetColumns = null)
+        /// <returns>取得したレコード</returns>
+        public T Select<T>(Expression<Func<T>> keyValues, Expression<Func<T, dynamic>> targetColumns = null, string otherClauses = null)
         {
             DynamicParameters parameters = null;
             var sql = this.Builder.BuildSelect<T>(targetColumns)
-                + this.Builder.BuildWhere(ref parameters, keyValues);
+                + this.Builder.BuildWhere(ref parameters, keyValues)
+                + (string.IsNullOrWhiteSpace(otherClauses) ? "" : " " + otherClauses);
             return this.Connection.QueryFirstOrDefault<T>(sql, parameters, this.Transaction, this.Timeout);
         }
 
@@ -96,9 +98,9 @@ namespace DapperAid
         /// </summary>
         /// <param name="where">レコード絞り込み条件（絞り込みを行わず全件対象とする場合はnull）</param>
         /// <param name="targetColumns">値取得対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
-        /// <param name="otherClauses">SQL文のwhere条件より後ろに付加するorderBy条件/limit/offset指定などがあれば、その内容</param>
+        /// <param name="otherClauses">SQL文の末尾に付加するorderBy条件/limit/offset指定などがあれば、その内容</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
-        /// <returns>取得したレコード</returns>
+        /// <returns>レコードのリスト</returns>
         public IReadOnlyList<T> Select<T>(Expression<Func<T, bool>> where = null, Expression<Func<T, dynamic>> targetColumns = null, string otherClauses = null)
         {
             DynamicParameters parameters = null;
@@ -182,7 +184,7 @@ namespace DapperAid
         public int Update<T>(T data, Expression<Func<T, dynamic>> targetColumns = null)
         {
             var sql = this.Builder.BuildUpdate<T>(targetColumns)
-                + this.Builder.BuildWhere<T>();
+                + this.Builder.BuildWhere<T>(data, true);
             return this.Connection.Execute(sql, data, this.Transaction, this.Timeout);
         }
 
@@ -208,7 +210,7 @@ namespace DapperAid
         public int Delete<T>(T data)
         {
             var sql = this.Builder.BuildDelete<T>()
-                + this.Builder.BuildWhere<T>();
+                + this.Builder.BuildWhere<T>(data, true);
             return this.Connection.Execute(sql, data, this.Transaction, this.Timeout);
         }
 

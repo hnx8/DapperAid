@@ -40,8 +40,8 @@ namespace DapperAidTest
             [InsertSql("CURRENT_TIMESTAMP"), UpdateSql(false)]
             public DateTime? CreatedAt { get; set; }
 
-            [InsertSql("CURRENT_TIMESTAMP"), UpdateSql("CURRENT_TIMESTAMP")]
-            private DateTime? UpdatedAt { get; set; }
+            [InsertSql("CURRENT_TIMESTAMP"), UpdateSql("CURRENT_TIMESTAMP"), ConcurrencyCheck]
+            public DateTime? UpdatedAt { get; private set; } = DateTime.Now;
 
             [NotMapped]
             public string TemporaryPassword { get; set; }
@@ -57,13 +57,21 @@ namespace DapperAidTest
             conn.Open();
 
             return new LoggableDbConnection(conn,
-                (ex, cmd) =>
+                errorLogger: (ex, cmd) =>
                 {
                     Trace.WriteLine(ex.ToString() + (cmd != null ? ":" + cmd.CommandText : null));
                 },
-                (text, mSec, cmd) =>
+                traceLogger: (text, mSec, cmd) =>
                 {
                     Trace.WriteLine(text + "(" + mSec + "ms)" + (cmd != null ? ":" + cmd.CommandText : null));
+                    if (cmd.Parameters?.Count > 0)
+                    {
+                        for (int i = 0; i < cmd.Parameters.Count; i++)
+                        {
+                            var param = cmd.Parameters[i];
+                            Trace.WriteLine($"    {param.ParameterName} = {param.Value}");
+                        }
+                    }
                 });
         }
 
@@ -98,8 +106,19 @@ namespace DapperAidTest
                     () => new Member { Id = 5 });
 
                 Member select2 = connection.Select(
-                    () => new Member { Id = 5 },
+                    () => new Member { Id = 6 },
                     r => new { r.Id, r.Name });
+
+                // (for update etc.)
+                Member selectForUpdate = connection.Select(
+                    () => new Member { Id = 7 },
+                    otherClauses: "--FOR UPDATE"); // SQLite doesnot support "FOR UPDATE", so commented out 
+
+                var targetMember = new Member { Id = 8, Name = "LockTest" };
+                var lockedMember = connection.Select(
+                    () => targetMember, // where [Key] or [ConcurrencyCheck] is set
+                    otherClauses: "--FOR UPDATE"); // SQLite doesnot support "FOR UPDATE", so commented out 
+
 
                 // select records --------------------
                 IReadOnlyList<Member> list1 = connection.Select<Member>();
@@ -175,10 +194,10 @@ namespace DapperAidTest
         }
 
         /// <summary>
-        /// SQL各種
+        /// ToSQLクラス指定によるSQL条件の追加テスト
         /// </summary>
         [TestMethod]
-        public void SqlTest()
+        public void ToSqlTest()
         {
             QueryBuilder.DefaultInstance = new QueryBuilder.SQLite();
 
@@ -187,9 +206,9 @@ namespace DapperAidTest
                 var createTableSql = DDLAttribute.GenerateCreateSQL<Member>();
                 connection.Execute(createTableSql);
 
-                var list1 = connection.Select<Member>(r => 
-                    (r.Name == ToSql.In(new[] { "A", "B" }) 
-                    || r.Name != ToSql.Like("%TEST%") 
+                var list1 = connection.Select<Member>(r =>
+                    (r.Name == ToSql.In(new[] { "A", "B" })
+                    || r.Name != ToSql.Like("%TEST%")
                     || r.Name == ToSql.Between("1", "5")
                     || DateTime.Now < r.CreatedAt));
 

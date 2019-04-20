@@ -14,7 +14,7 @@ namespace DapperAid.DataAnnotations
         /// <summary>group by句を生成しKey項目のカラムでグループ化する場合、trueを指定します。</summary>
         public bool GroupByKey { get; set; }
 
-        /// <summary>SQL文の末尾にデフォルトで付加するSQL句（orderBy条件/limit/offset指定など）があれば設定します。</summary>
+        /// <summary>リスト取得SQL文の末尾にデフォルトで付加するSQL句（orderBy条件/limit/offset指定など）があれば設定します。</summary>
         public string DefaultOtherClauses { get; set; }
     }
 }

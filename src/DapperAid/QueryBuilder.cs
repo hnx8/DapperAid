@@ -245,7 +245,7 @@ namespace DapperAid
         {
             var tableInfo = GetTableInfo<T>();
             var columns = (targetColumns == null)
-                ? tableInfo.Columns.Where(c => (c.Update && !c.IsKey))
+                ? tableInfo.Columns.Where(c => (c.Update))
                 : tableInfo.GetColumns(ExpressionHelper.GetMemberNames(targetColumns.Body));
             var sb = new StringBuilder();
             foreach (var column in columns)
@@ -287,25 +287,33 @@ namespace DapperAid
         /// 指定された型のテーブルのKey項目を条件としたWhere句を生成します。
         /// </summary>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
+        /// <param name="data">Where条件対象カラムに値が設定されているオブジェクト</param>
+        /// <param name="withConcurrencyCheck">楽観排他更新用SQLのWhere条件を生成する場合、true</param>
+        /// <param name="parameters">パラメータバインドも行う場合は、Dapperパラメーターオブジェクト</param>
         /// <returns>SQL文のWhere句</returns>
-        public string BuildWhere<T>()
+        public string BuildWhere<T>(T data, bool withConcurrencyCheck = false, DynamicParameters parameters = null)
         {
             var tableInfo = GetTableInfo<T>();
-            var columns = tableInfo.Columns.Where(c => (c.IsKey));
+            var columns = tableInfo.Columns.Where(c => c.IsKey || (withConcurrencyCheck && c.ConcurrencyCheck));
             var sb = new StringBuilder();
-            foreach (var column in tableInfo.Columns.Where(c => c.IsKey))
+            foreach (var column in columns)
             {
                 if (sb.Length > 0) { sb.Append(" and "); }
-                sb.Append(column.Name)
-                    .Append("=")
-                    .Append(this.ParameterMarker + column.PropertyInfo.Name);
-                // ※PK項目なのでnullになることはあり得ない
+                var value = (data == null ? null : MemberAccessor.GetValue(data, column.PropertyInfo));
+                if (data != null && value == null)
+                {
+                    sb.Append(column.Name).Append(" is null");
+                }
+                else
+                {
+                    sb.Append(column.Name)
+                        .Append("=")
+                        .Append(parameters == null
+                            ? (ParameterMarker + column.PropertyInfo.Name)
+                            : AddParameter(parameters, column.PropertyInfo.Name, value));
+                }
             }
-            if (sb.Length == 0)
-            {
-                throw new MissingPrimaryKeyException();
-            }
-            return " where " + sb.ToString();
+            return (sb.Length == 0 ? "" : " where " + sb.ToString());
         }
 
         /// <summary>
@@ -317,13 +325,20 @@ namespace DapperAid
         /// <returns>SQL文のWhere句</returns>
         public string BuildWhere<T>(ref DynamicParameters parameters, Expression<Func<T>> keyValues)
         {
+            var memberExpr = (keyValues.Body as MemberExpression);
+            if (memberExpr != null)
+            {   // 特例対応：ラムダの戻り値として指定されたオブジェクトをもとに楽観排他更新のWhere条件式を生成して返す
+                var data = (T)ExpressionHelper.EvaluateValue(memberExpr);
+                if (parameters == null) { parameters = new DynamicParameters(); }
+                return BuildWhere<T>(data, true, parameters);
+            }
+
             var initExpr = (keyValues.Body as MemberInitExpression);
             if (initExpr == null || initExpr.Bindings.Count == 0)
             {
                 throw new ArgumentException("no condition column");
             }
 
-            if (parameters == null) { parameters = new DynamicParameters(); }
             var tableInfo = GetTableInfo<T>();
             var sb = new StringBuilder();
             foreach (var member in initExpr.Bindings)
@@ -333,6 +348,7 @@ namespace DapperAid
                 if (sb.Length > 0) { sb.Append(" and "); }
                 if (value != null)
                 {
+                    if (parameters == null) { parameters = new DynamicParameters(); }
                     sb.Append(column.Name)
                         .Append("=")
                         .Append(AddParameter(parameters, column.PropertyInfo.Name, value));
