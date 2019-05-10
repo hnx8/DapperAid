@@ -131,7 +131,7 @@ void OperationExample() {
     IReadOnlyList<Member> list4 = connection.Select<Member>(
         r => r.Tel != null,
         r => new { r.Id, r.Name },
-        "ORDER BY Name LIMIT 5 OFFSET 10");
+        $"ORDER BY {nameof(Member.Name)} LIMIT 5 OFFSET 10");
     // -> select "Id", "Name" from Members where Phone_No is not null
     //           ORDER BY Name LIMIT 5 OFFSET 10
 ```

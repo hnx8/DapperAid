@@ -170,12 +170,12 @@ namespace DapperAid
         }
 
         /// <summary>
-        /// 指定された型のテーブルに対するSELECT SQLの後半部（group by, order by等)を生成します。
+        /// 指定された型のテーブルに対するSELECT SQLの末尾（group by, order by等)を生成します。
         /// </summary>
         /// <param name="targetColumns">値取得対象カラムを限定している場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
-        /// <param name="otherClauses">SQL文の末尾(where条件の後ろ)に付加するorderBy条件/limit/offset指定などがあれば、その内容</param>
+        /// <param name="otherClauses">SQL文の末尾に付加するorderBy条件/limit/offset/forUpdate指定などがあれば、その内容</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
-        /// <returns>Select SQLの後半部（テーブルの設定などに応じたgroup by/order by等の内容）</returns>
+        /// <returns>Select SQLの末尾（テーブルの設定などに応じたgroup by/order by等の内容）</returns>
         public string BuildSelectOrderByEtc<T>(Expression<Func<T, dynamic>> targetColumns = null, string otherClauses = null)
         {
             var tableInfo = GetTableInfo<T>();
@@ -289,12 +289,24 @@ namespace DapperAid
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <param name="data">Where条件対象カラムに値が設定されているオブジェクト</param>
         /// <param name="withConcurrencyCheck">楽観排他更新用SQLのWhere条件を生成する場合、true</param>
-        /// <param name="parameters">パラメータバインドも行う場合は、Dapperパラメーターオブジェクト</param>
         /// <returns>SQL文のWhere句</returns>
-        public string BuildWhere<T>(T data, bool withConcurrencyCheck = false, DynamicParameters parameters = null)
+        public string BuildWhere<T>(T data, bool withConcurrencyCheck = false)
         {
             var tableInfo = GetTableInfo<T>();
             var columns = tableInfo.Columns.Where(c => c.IsKey || (withConcurrencyCheck && c.ConcurrencyCheck));
+            return BuildWhere<T>(columns, data);
+        }
+
+        /// <summary>
+        /// 指定されたカラムの値を条件としたWhere句を生成します。
+        /// </summary>
+        /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
+        /// <param name="columns">Where条件対象カラムの列挙</param>
+        /// <param name="data">Where条件対象カラムに値が設定されているオブジェクト</param>
+        /// <param name="parameters">パラメータバインドも行う場合は、Dapperパラメーターオブジェクト</param>
+        /// <returns>SQL文のWhere句</returns>
+        protected internal string BuildWhere<T>(IEnumerable<TableInfo.Column> columns, T data, DynamicParameters parameters = null)
+        {
             var sb = new StringBuilder();
             foreach (var column in columns)
             {
@@ -330,7 +342,8 @@ namespace DapperAid
             {   // 特例対応：ラムダの戻り値として指定されたオブジェクトをもとに楽観排他更新のWhere条件式を生成して返す
                 var data = (T)ExpressionHelper.EvaluateValue(memberExpr);
                 if (parameters == null) { parameters = new DynamicParameters(); }
-                return BuildWhere<T>(data, true, parameters);
+                var whereColumns = GetTableInfo<T>().Columns.Where(c => c.IsKey || c.ConcurrencyCheck);
+                return BuildWhere<T>(whereColumns, data, parameters);
             }
 
             var initExpr = (keyValues.Body as MemberInitExpression);
@@ -602,7 +615,7 @@ namespace DapperAid
         /// <param name="transaction">DBトランザクション</param>
         /// <param name="timeout">タイムアウト時間</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
-        /// <returns>挿入されたレコードの件数（１件）</returns>
+        /// <returns>挿入された行数(=1件)</returns>
         /// <remarks>
         /// 自動連番に対応していないテーブル/DBMSでは例外がスローされます。
         /// サブクラスによりオーバーライドされることがあります（Oracleなどでは大幅に挙動が変わります）
@@ -646,7 +659,7 @@ namespace DapperAid
         /// <param name="transaction">DBトランザクション</param>
         /// <param name="timeout">タイムアウト時間</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
-        /// <returns>挿入されたレコードの件数</returns>
+        /// <returns>挿入された行数</returns>
         /// <remarks>
         /// サブクラスによりオーバーライドされることがあります（DBMSによっては一括インサートにて高速にデータ挿入が行われます）
         /// </remarks>

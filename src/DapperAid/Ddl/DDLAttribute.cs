@@ -138,7 +138,7 @@ namespace DapperAid.Ddl
                 sb.Append(column.PropertyInfo.PropertyType.ToString());
                 sb.Append("\t");
                 sb.Append(
-                    (column.IsKey ? "Key" : (column.ConcurrencyCheck ? "" : "ConcurrencyCheck"))
+                    (column.IsKey ? "Key" : (column.ConcurrencyCheck ? "ConcurrencyCheck" : ""))
                     + (table.RetrieveInsertedIdColumn == column ? "(ID)" : ""));
                 sb.Append("\t");
                 sb.Append(column.Alias == null ? column.PropertyInfo.Name : escape(column.Name));

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Linq;
 using System.Linq.Expressions;
 using Dapper;
 
@@ -183,8 +184,11 @@ namespace DapperAid
         /// <returns>更新された行数</returns>
         public int Update<T>(T data, Expression<Func<T, dynamic>> targetColumns = null)
         {
+            // PKカラム、楽観同時実行チェック対象カラム(ただしバインド値で更新するカラムは除く)をwhere条件カラムとしてSQL生成実行
+            var whereColumns = this.Builder.GetTableInfo<T>().Columns
+                .Where(c => c.IsKey || (c.ConcurrencyCheck && !(c.Update && c.UpdateSQL == null)));
             var sql = this.Builder.BuildUpdate<T>(targetColumns)
-                + this.Builder.BuildWhere<T>(data, true);
+                + this.Builder.BuildWhere<T>(whereColumns, data);
             return this.Connection.Execute(sql, data, this.Transaction, this.Timeout);
         }
 

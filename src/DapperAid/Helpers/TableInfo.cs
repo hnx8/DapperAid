@@ -80,7 +80,7 @@ namespace DapperAid.Helpers
 
                 var updateAttr = prop.GetCustomAttribute<UpdateSqlAttribute>();
                 this.Update = (updateAttr == null)
-                    ? (!this.IsKey && !this.ConcurrencyCheck)
+                    ? (!this.IsKey)
                     : updateAttr.SetValue;
                 this.UpdateSQL = (updateAttr == null || string.IsNullOrWhiteSpace(updateAttr.Sql)) ? null : updateAttr.Sql;
             }

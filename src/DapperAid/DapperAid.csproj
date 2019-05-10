@@ -4,12 +4,11 @@
     <LangVersion>5</LangVersion>
   </PropertyGroup>
   <PropertyGroup>
-    <Version>0.8.2</Version>
+    <Version>0.8.3</Version>
     <Authors>hnx8(H.Takahashi)</Authors>
     <Copyright>Copyright (C) 2019-2019 hnx8(H.Takahashi)</Copyright>
     <PackageProjectUrl>https://github.com/hnx8/DapperAid</PackageProjectUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
     <PackageTags>Dapper, SQL-Generation, CRUD, Query Builder, ORM, Mapping</PackageTags>
     <Product>DapperAid - SQL CRUD Query-Builder/Executor for Dapper</Product>
     <Title>DapperAid - SQL CRUD Query-Builder/Executor for Dapper</Title>
