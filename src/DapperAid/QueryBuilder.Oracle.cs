@@ -18,6 +18,12 @@ namespace DapperAid
             /// <summary>バインドパラメータの頭に付加する文字(Oracleは「:」を使用)</summary>
             public override char ParameterMarker { get { return ':'; } }
 
+            /// <summary>引数の値がnullに相当する値であればtrueを返します。Oracleは長さゼロの文字列もnullとみなします。</summary>
+            public override bool IsNull(object value)
+            {
+                return (base.IsNull(value) || (value is string && string.IsNullOrEmpty(value as string)));
+            }
+
             /// <summary>
             /// 指定されたレコードを挿入し、[InsertSQL(RetrieveInsertedId = true)]属性で指定された自動連番カラムに採番されたIDを当該プロパティにセットします。
             /// (Oracleはoutパラメータより把握)
@@ -65,10 +71,10 @@ namespace DapperAid
                 }
 
                 var sb = new StringBuilder();
-                string delimiter = "(";
-                for (int i = 0; i < allValues.Length; i = i + 1000)
+                var delimiter = "(";
+                for (var i = 0; i < allValues.Length; i += 1000)
                 {
-                    int count = Math.Min(1000, allValues.Length - i);
+                    var count = Math.Min(1000, allValues.Length - i);
                     sb.Append(delimiter);
                     sb.Append(base.BuildWhereIn(parameters, column, opIsNot, new ArraySegment<object>(allValues, i, count)));
                     delimiter = ")or(";

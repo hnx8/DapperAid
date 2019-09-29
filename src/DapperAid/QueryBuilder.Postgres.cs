@@ -35,26 +35,11 @@ namespace DapperAid
             public override int InsertRows<T>(IEnumerable<T> data, Expression<System.Func<T, dynamic>> targetColumns, IDbConnection connection, IDbTransaction transaction, int? timeout = null)
             {
                 var ret = 0;
-                foreach (var sql in BulkInsertHelper.BuildBulkInsert(this, data, targetColumns, Value2SqlLiteral))
+                foreach (var sql in BulkInsertHelper.BuildBulkInsert(this, data, targetColumns, base.ToSqlLiteral))
                 {
                     ret += connection.Execute(sql, null, transaction, timeout);
                 }
                 return ret;
-            }
-
-            /// <summary>
-            /// 引数で指定された値をPostgreSQLにおけるSQLリテラル値表記へと変換します（主に一括Insert用）
-            /// </summary>
-            /// <param name="value">エスケープ前の値</param>
-            /// <returns>SQLリテラル値表記</returns>
-            public static string Value2SqlLiteral(object value)
-            {
-                if (value == null || value is System.DBNull) { return "null"; }
-                if (value is string) { return "'" + (value as string).Replace("'", "''") + "'"; }
-                if (value is bool) { return ((bool)value ? "TRUE" : "FALSE"); }
-                if (value is DateTime) { return "timestamp '" + ((DateTime)value).ToString("yyyy-MM-dd HH:mm:ss") + "'"; }
-                if (value is Enum) { return ((Enum)value).ToString("d"); }
-                return value.ToString();
             }
         }
     }

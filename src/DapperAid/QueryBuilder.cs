@@ -77,6 +77,74 @@ namespace DapperAid
             return "\"" + identifier.Replace("\"", "\"\"") + "\"";
         }
 
+        /// <summary>TRUEを表すSQLリテラル表記です。</summary>
+        /// <remarks>ごく一部のDBMSは0/1で表記します。</remarks>
+        public virtual string TrueLiteral { get { return "true"; } }
+
+        /// <summary>Falseを表すSQLリテラル表記です。</summary>
+        /// <remarks>ごく一部のDBMSは0/1で表記します。</remarks>
+        public virtual string FalseLiteral { get { return "false"; } }
+
+        /// <summary>
+        /// 引数で指定された値をSQLリテラル値表記へと変換します。
+        /// </summary>
+        /// <param name="value">値</param>
+        /// <returns>SQLリテラル値表記</returns>
+        public string ToSqlLiteral(object value)
+        {
+            if (IsNull(value)) { return "null"; }
+            if (value is string) { return ToSqlLiteral(value as string); }
+            if (value is DateTime) { return ToSqlLiteral((DateTime)value); }
+            if (value is bool) { return ((bool)value ? TrueLiteral : FalseLiteral); }
+            if (value is Enum) { return ((Enum)value).ToString("d"); }
+            if (value.GetType().GetInterfaces().Any(t => t.IsConstructedGenericType && t.GetGenericTypeDefinition() == typeof(ICollection<>)))
+            {
+                var sb = new StringBuilder();
+                var delimiter = "(";
+                foreach (var v in value as System.Collections.IEnumerable)
+                {
+                    sb.Append(delimiter).Append(ToSqlLiteral(v));
+                    delimiter = ",";
+
+                }
+                sb.Append(")");
+                return sb.ToString();
+            }
+            return value.ToString();
+        }
+        /// <summary>
+        /// 引数で指定された文字列値をSQLリテラル値表記へと変換します。
+        /// </summary>
+        /// <param name="value">値</param>
+        /// <returns>SQLリテラル値表記</returns>
+        /// <remarks>DBMSによりリテラル値表記が異なります。</remarks>
+        public virtual string ToSqlLiteral(string value)
+        {
+            return (IsNull(value) ? "null" : "'" + value.Replace("'", "''") + "'");
+        }
+        /// <summary>
+        /// 引数で指定された日付値をSQLリテラル値表記へと変換します。
+        /// </summary>
+        /// <param name="value">値</param>
+        /// <returns>SQLリテラル値表記</returns>
+        /// <remarks>DBMSによりリテラル値表記が異なります。</remarks>
+        public virtual string ToSqlLiteral(DateTime value)
+        {
+            // 以下の書式はPostgreSQL,Oracle,DB2向け。SQLite/SqlServerはdatetime、Accessは#日時#、MySqlは文字列表記
+            return "timestamp '" + value.ToString("yyyy-MM-dd HH:mm:ss.ffffff") + "'";
+        }
+
+        /// <summary>
+        /// 引数の値がnullに相当する値であればtrueを返します。
+        /// </summary>
+        /// <param name="value">値</param>
+        /// <returns>nullに相当する値であればtrue</returns>
+        /// <remarks>ごく一部のDBMSは長さゼロの文字列もnullとみなします。</remarks>
+        public virtual bool IsNull(object value)
+        {
+            return (value == null || value is System.DBNull);
+        }
+
         #endregion
 
         #region パラメータバインド ---------------------------------------------
@@ -87,9 +155,14 @@ namespace DapperAid
         /// <param name="parameters">パラメーターオブジェクト</param>
         /// <param name="proposedName">パラメータ名の候補（すでに使用されていなければ採用）</param>
         /// <param name="value">パラメータ値</param>
-        /// <returns>バインドされたマーカープリフィックス付きのパラメータ名。例："@Key1"</returns>
-        protected virtual string AddParameter(DynamicParameters parameters, string proposedName, object value)
+        /// <returns>バインドされたマーカープリフィックス付きのパラメータ名、例："@Key1"。ただしパラメータオブジェクトがnullの場合はSQLリテラル値</returns>
+        public string AddParameter(DynamicParameters parameters, string proposedName, object value)
         {
+            if (parameters == null)
+            {
+                return ToSqlLiteral(value);
+            }
+
             var alreadyUsedNames = parameters.ParameterNames.ToArray();
             var i = alreadyUsedNames.Length;
             var parameterName = proposedName;
@@ -172,7 +245,7 @@ namespace DapperAid
         /// <summary>
         /// 指定された型のテーブルに対するSELECT SQLの末尾（group by, order by等)を生成します。
         /// </summary>
-        /// <param name="targetColumns">値取得対象カラムを限定している場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
+        /// <param name="targetColumns">（group byを生成する場合にのみ影響）値取得対象カラムを限定している場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
         /// <param name="otherClauses">SQL文の末尾に付加するorderBy条件/limit/offset/forUpdate指定などがあれば、その内容</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>Select SQLの末尾（テーブルの設定などに応じたgroup by/order by等の内容）</returns>
@@ -312,7 +385,7 @@ namespace DapperAid
             {
                 if (sb.Length > 0) { sb.Append(" and "); }
                 var value = (data == null ? null : MemberAccessor.GetValue(data, column.PropertyInfo));
-                if (data != null && value == null)
+                if (data != null && IsNull(value))
                 {
                     sb.Append(column.Name).Append(" is null");
                 }
@@ -358,15 +431,15 @@ namespace DapperAid
                 var column = tableInfo.GetColumn(member.Member.Name);
                 var value = ExpressionHelper.EvaluateValue((member as MemberAssignment).Expression);
                 if (sb.Length > 0) { sb.Append(" and "); }
-                if (value != null)
+                if (IsNull(value))
+                {
+                    sb.Append(column.Name).Append(" is null");
+                }
+                else
                 {
                     sb.Append(column.Name)
                         .Append("=")
                         .Append(AddParameter(parameters, column.PropertyInfo.Name, value));
-                }
-                else
-                {
-                    sb.Append(column.Name).Append(" is null");
                 }
             }
             return " where " + sb.ToString();
@@ -426,7 +499,7 @@ namespace DapperAid
                 var column = getIfOperandIsConditionColumn(isNot ? unaryExpr.Operand : expression);
                 if (column != null && column.PropertyInfo.PropertyType == typeof(bool))
                 {   // boolカラム値の条件として組み立てる
-                    return column.Name + "=" + (isNot ? "false" : "true");
+                    return column.Name + "=" + (isNot ? FalseLiteral : TrueLiteral);
                 }
                 if (isNot)
                 {   // NOT条件として組み立てる
@@ -459,24 +532,24 @@ namespace DapperAid
             {
                 case ExpressionType.AndAlso:
                     var andLeft = BuildWhere(parameters, tableInfo, binaryExpr.Left);
-                    if (andLeft == "false")
+                    if (andLeft == FalseLiteral)
                     {   // 「left && right」のうちleftでfalseが確定している場合は、右辺の展開を行わない
                         return andLeft;
                     }
                     var andRight = BuildWhere(parameters, tableInfo, binaryExpr.Right);
-                    if (andLeft == "true")
+                    if (andLeft == TrueLiteral)
                     {   // 「left && right」のうちleftがtrueなら、右辺のみを返す
                         return andRight;
                     }
                     return andLeft + " and " + andRight;
                 case ExpressionType.OrElse:
                     var orLeft = BuildWhere(parameters, tableInfo, binaryExpr.Left);
-                    if (orLeft == "true")
+                    if (orLeft == TrueLiteral)
                     {   // 「left || right」のうちleftでtrueが確定している場合は、右辺の展開を行わない
                         return orLeft;
                     }
                     var orRight = BuildWhere(parameters, tableInfo, binaryExpr.Right);
-                    if (orLeft == "false")
+                    if (orLeft == FalseLiteral)
                     {   // 「left || right」のうちleftがfalseなら、右辺のみを返す
                         return orRight;
                     }
@@ -492,7 +565,7 @@ namespace DapperAid
                 {
                     throw new InvalidExpressionException(binaryExpr.ToString());
                 }
-                return ((bool)boolValue ? "true" : "false");
+                return ((bool)boolValue ? TrueLiteral : FalseLiteral);
             }
 
             // 比較演算子を解釈

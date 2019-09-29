@@ -1,4 +1,5 @@
-﻿using DapperAid.Helpers;
+﻿using System;
+using DapperAid.Helpers;
 
 namespace DapperAid
 {
@@ -13,6 +14,17 @@ namespace DapperAid
             public override string EscapeIdentifier(string identifier)
             {
                 return "[" + identifier + "]";
+            }
+
+            /// <summary>
+            /// 引数で指定された日付値をMicrosoft AccessにおけるSQLリテラル値表記へと変換します。
+            /// </summary>
+            /// <param name="value">値</param>
+            /// <returns>SQLリテラル値表記</returns>
+            public override string ToSqlLiteral(DateTime value)
+            {
+                // Microsoft Accessはミリ秒以下未対応
+                return "#" + value.ToString("yyyy-MM-dd HH:mm:ss") + "#";
             }
 
             /// <summary>自動連番値を取得するSQL句として、セミコロンで区切った別のSQL文を付加します。</summary>
