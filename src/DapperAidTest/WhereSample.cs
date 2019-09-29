@@ -23,8 +23,8 @@ namespace DapperAidTest
 
         void Select<T>(Expression<Func<T, bool>> where)
         {
-            DynamicParameters parameters = null;
-            var sql = QueryBuilder.DefaultInstance.BuildWhere(ref parameters, where);
+            var parameters = new DynamicParameters();
+            var sql = QueryBuilder.DefaultInstance.BuildWhere(parameters, where);
             Trace.WriteLine(sql);
         }
 

@@ -331,17 +331,16 @@ namespace DapperAid
         /// <summary>
         /// 指定された項目を条件としたWhere条件SQLを生成します。パラメータバインドも行います。
         /// </summary>
-        /// <param name="parameters">Dapperパラメーターオブジェクト（ref：未生成の場合はインスタンスを生成する）</param>
+        /// <param name="parameters">Dapperパラメーターオブジェクト</param>
         /// <param name="keyValues">レコード特定Key値を初期化子で指定するラムダ式。例：「<c>() => new Tbl1 { Key1 = 1, Key2 = 99 }</c>」</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>SQL文のWhere句</returns>
-        public string BuildWhere<T>(ref DynamicParameters parameters, Expression<Func<T>> keyValues)
+        public string BuildWhere<T>(DynamicParameters parameters, Expression<Func<T>> keyValues)
         {
             var memberExpr = (keyValues.Body as MemberExpression);
             if (memberExpr != null)
             {   // 特例対応：ラムダの戻り値として指定されたオブジェクトをもとに楽観排他更新のWhere条件式を生成して返す
                 var data = (T)ExpressionHelper.EvaluateValue(memberExpr);
-                if (parameters == null) { parameters = new DynamicParameters(); }
                 var whereColumns = GetTableInfo<T>().Columns.Where(c => c.IsKey || c.ConcurrencyCheck);
                 return BuildWhere<T>(whereColumns, data, parameters);
             }
@@ -361,7 +360,6 @@ namespace DapperAid
                 if (sb.Length > 0) { sb.Append(" and "); }
                 if (value != null)
                 {
-                    if (parameters == null) { parameters = new DynamicParameters(); }
                     sb.Append(column.Name)
                         .Append("=")
                         .Append(AddParameter(parameters, column.PropertyInfo.Name, value));
@@ -378,18 +376,16 @@ namespace DapperAid
         /// 引数で指定された条件式ラムダに基づきWhere条件SQLを生成します。
         /// where条件値のパラメータバインドも行います。
         /// </summary>
-        /// <param name="parameters">Dapperパラメーターオブジェクト（ref：未生成の場合はインスタンスを生成する）</param>
+        /// <param name="parameters">Dapperパラメーターオブジェクト</param>
         /// <param name="where">式木（ラムダ）により記述された条件式</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>生成されたWhere句（条件指定なしの場合は空文字）</returns>
-        public string BuildWhere<T>(ref DynamicParameters parameters, Expression<Func<T, bool>> where)
+        public string BuildWhere<T>(DynamicParameters parameters, Expression<Func<T, bool>> where)
         {
             if (where == null)
             {
                 return string.Empty;
             }
-
-            if (parameters == null) { parameters = new DynamicParameters(); }
             var tableInfo = GetTableInfo<T>();
             return " where " + BuildWhere(parameters, tableInfo, where.Body);
         }

@@ -21,8 +21,8 @@ namespace DapperAid
         /// <returns>レコード数</returns>
         public Task<ulong> CountAsync<T>(Expression<Func<T, bool>> where = null)
         {
-            DynamicParameters parameters = null;
-            var sql = this.Builder.BuildCount<T>() + this.Builder.BuildWhere(ref parameters, where);
+            var parameters = new DynamicParameters();
+            var sql = this.Builder.BuildCount<T>() + this.Builder.BuildWhere(parameters, where);
             return this.Connection.ExecuteScalarAsync<ulong>(sql, parameters, this.Transaction, this.Timeout);
         }
 
@@ -36,9 +36,9 @@ namespace DapperAid
         /// <returns>取得したレコード（１件、レコード不存在の場合はnull）</returns>
         public Task<T> SelectAsync<T>(Expression<Func<T>> keyValues, Expression<Func<T, dynamic>> targetColumns = null, string otherClauses = null)
         {
-            DynamicParameters parameters = null;
+            var parameters = new DynamicParameters();
             var sql = this.Builder.BuildSelect<T>(targetColumns)
-                + this.Builder.BuildWhere(ref parameters, keyValues)
+                + this.Builder.BuildWhere(parameters, keyValues)
                 + (string.IsNullOrWhiteSpace(otherClauses) ? "" : " " + otherClauses);
             return this.Connection.QueryFirstOrDefaultAsync<T>(sql, parameters, this.Transaction, this.Timeout);
         }
@@ -53,9 +53,9 @@ namespace DapperAid
         /// <returns>レコードのリスト</returns>
         public Task<IReadOnlyList<T>> SelectAsync<T>(Expression<Func<T, bool>> where = null, Expression<Func<T, dynamic>> targetColumns = null, string otherClauses = null)
         {
-            DynamicParameters parameters = null;
+            var parameters = new DynamicParameters();
             var sql = this.Builder.BuildSelect(targetColumns)
-                + this.Builder.BuildWhere(ref parameters, where)
+                + this.Builder.BuildWhere(parameters, where)
                 + this.Builder.BuildSelectOrderByEtc(targetColumns, otherClauses);
             var result = this.Connection.QueryAsync<T>(sql, parameters, this.Transaction, this.Timeout);
             return result as Task<IReadOnlyList<T>>;
@@ -71,7 +71,7 @@ namespace DapperAid
         public Task<int> InsertAsync<T>(Expression<Func<T>> values)
         {
             var sql = this.Builder.BuildInsert<T>(values);
-            DynamicParameters parameters = this.Builder.BindValues(values);
+            var parameters = this.Builder.BindValues(values);
             return this.Connection.ExecuteAsync(sql, parameters, this.Transaction, this.Timeout);
         }
 
@@ -122,9 +122,9 @@ namespace DapperAid
         /// <returns>更新された行数</returns>
         public Task<int> UpdateAsync<T>(Expression<Func<T>> values, Expression<Func<T, bool>> where)
         {
-            DynamicParameters parameters = this.Builder.BindValues(values);
+            var parameters = this.Builder.BindValues(values);
             var sql = this.Builder.BuildUpdate<T>(values)
-                + this.Builder.BuildWhere(ref parameters, where);
+                + this.Builder.BuildWhere(parameters, where);
             return this.Connection.ExecuteAsync(sql, parameters, this.Transaction, this.Timeout);
         }
 
@@ -153,9 +153,9 @@ namespace DapperAid
         /// <returns>削除された行数</returns>
         public Task<int> DeleteAsync<T>(Expression<Func<T, bool>> where = null)
         {
-            DynamicParameters parameters = null;
+            var parameters = new DynamicParameters();
             var sql = this.Builder.BuildDelete<T>()
-                + this.Builder.BuildWhere(ref parameters, where);
+                + this.Builder.BuildWhere(parameters, where);
             return this.Connection.ExecuteAsync(sql, parameters, this.Transaction, this.Timeout);
         }
 
