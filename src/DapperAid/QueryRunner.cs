@@ -4,6 +4,7 @@ using System.Data;
 using System.Linq;
 using System.Linq.Expressions;
 using Dapper;
+using DapperAid.Helpers;
 
 namespace DapperAid
 {
@@ -138,13 +139,54 @@ namespace DapperAid
         {
             if (retrieveInsertedId)
             {   // 自動連番Insert
-                return this.Builder.InsertAndRetrieveId(data, targetColumns, this.Connection, this.Transaction, this.Timeout);
+                return this.InsertAndRetrieveId(data, targetColumns);
             }
             else
             {   // 通常Insert
                 var sql = this.Builder.BuildInsert<T>(targetColumns);
                 return this.Connection.Execute(sql, data, this.Transaction, this.Timeout);
             }
+        }
+
+        /// <summary>
+        /// 指定されたレコードを挿入し、[InsertSQL(RetrieveInsertedId = true)]属性の自動連番カラムで採番されたIDを当該プロパティへセットします。
+        /// </summary>
+        /// <param name="data">挿入するレコード</param>
+        /// <param name="targetColumns">値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
+        /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
+        /// <returns>挿入された行数(=1件)</returns>
+        /// <remarks>
+        /// 自動連番に対応していないテーブル/DBMSでは例外がスローされます。
+        /// </remarks>
+        public int InsertAndRetrieveId<T>(T data, Expression<Func<T, dynamic>> targetColumns)
+        {
+            var sql = this.Builder.BuildInsertAndRetrieveId<T>(targetColumns);
+
+            var tableInfo = this.Builder.GetTableInfo<T>();
+            var idProp = tableInfo.RetrieveInsertedIdColumn.PropertyInfo;
+            object insertedId;
+            if (sql.Contains(" into " + this.Builder.ParameterMarker + idProp.Name))
+            {
+                // 採番値がoutパラメータへ格納される場合(Oracleなど)、outパラメータ含む各パラメータをバインドして実行、採番値を把握
+                var parameters = new DynamicParameters();
+                parameters.Add(idProp.Name, MemberAccessor.GetValue(data, idProp), null, ParameterDirection.InputOutput);
+                var columns = (targetColumns == null)
+                    ? tableInfo.Columns.Where(c => c.Insert)
+                    : tableInfo.GetColumns(ExpressionHelper.GetMemberNames(targetColumns.Body));
+                foreach (var column in columns)
+                {
+                    this.Builder.AddParameter(parameters, column.PropertyInfo.Name, MemberAccessor.GetValue(data, column.PropertyInfo));
+                }
+                this.Connection.Execute(sql, parameters, this.Transaction, this.Timeout);
+                insertedId = parameters.Get<object>(idProp.Name);
+            }
+            else
+            {
+                // 通常のDBMSについては、SQL実行結果列の値として採番値を把握
+                insertedId = this.Connection.ExecuteScalar(sql, data, this.Transaction, this.Timeout);
+            }
+            MemberAccessor.SetValue(data, idProp, Convert.ChangeType(insertedId, idProp.PropertyType));
+            return 1;
         }
 
         /// <summary>
@@ -156,7 +198,12 @@ namespace DapperAid
         /// <returns>挿入された行数</returns>
         public int InsertRows<T>(IEnumerable<T> data, Expression<Func<T, dynamic>> targetColumns = null)
         {
-            return this.Builder.InsertRows<T>(data, targetColumns, this.Connection, this.Transaction, this.Timeout);
+            var ret = 0;
+            foreach (var sql in this.Builder.BuildMultiInsert(data, targetColumns))
+            {
+                ret += this.Connection.Execute(sql, null, this.Transaction, this.Timeout);
+            }
+            return ret;
         }
 
 
@@ -185,10 +232,8 @@ namespace DapperAid
         public int Update<T>(T data, Expression<Func<T, dynamic>> targetColumns = null)
         {
             // PKカラム、楽観同時実行チェック対象カラム(ただしバインド値で更新するカラムは除く)をwhere条件カラムとしてSQL生成実行
-            var whereColumns = this.Builder.GetTableInfo<T>().Columns
-                .Where(c => c.IsKey || (c.ConcurrencyCheck && !(c.Update && c.UpdateSQL == null)));
             var sql = this.Builder.BuildUpdate<T>(targetColumns)
-                + this.Builder.BuildWhere<T>(whereColumns, data);
+                + this.Builder.BuildWhere<T>(data, c => (c.IsKey || (c.ConcurrencyCheck && !(c.Update && c.UpdateSQL == null))));
             return this.Connection.Execute(sql, data, this.Transaction, this.Timeout);
         }
 
@@ -213,8 +258,9 @@ namespace DapperAid
         /// <returns>削除された行数</returns>
         public int Delete<T>(T data)
         {
+            // PKカラム、楽観同時実行チェック対象カラムをwhere条件カラムとしてSQL生成実行
             var sql = this.Builder.BuildDelete<T>()
-                + this.Builder.BuildWhere<T>(data, true);
+                + this.Builder.BuildWhere<T>(data, c => (c.IsKey || c.ConcurrencyCheck));
             return this.Connection.Execute(sql, data, this.Transaction, this.Timeout);
         }
 

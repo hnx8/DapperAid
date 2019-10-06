@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Linq.Expressions;
 using System.Threading.Tasks;
 using Dapper;
@@ -87,9 +86,7 @@ namespace DapperAid
         {
             if (retrieveInsertedId)
             {   // 自動連番Insert
-                return Task<int>.Run(() =>
-                    this.Builder.InsertAndRetrieveId(data, targetColumns, this.Connection, this.Transaction, this.Timeout)
-                );
+                return Task<int>.Run(() => this.InsertAndRetrieveId(data, targetColumns));
             }
             else
             {   // 通常Insert
@@ -107,9 +104,7 @@ namespace DapperAid
         /// <returns>挿入された行数</returns>
         public Task<int> InsertRowsAsync<T>(IEnumerable<T> data, Expression<Func<T, dynamic>> targetColumns = null)
         {
-            return Task<int>.Run(() =>
-                this.Builder.InsertRows<T>(data, targetColumns, this.Connection, this.Transaction, this.Timeout)
-            );
+            return Task<int>.Run(() => this.InsertRows(data, targetColumns));
         }
 
 
@@ -138,10 +133,8 @@ namespace DapperAid
         public Task<int> UpdateAsync<T>(T data, Expression<Func<T, dynamic>> targetColumns = null)
         {
             // PKカラム、楽観同時実行チェック対象カラム(ただしバインド値で更新するカラムは除く)をwhere条件カラムとしてSQL生成実行
-            var whereColumns = this.Builder.GetTableInfo<T>().Columns
-                .Where(c => c.IsKey || (c.ConcurrencyCheck && !(c.Update && c.UpdateSQL == null)));
             var sql = this.Builder.BuildUpdate<T>(targetColumns)
-                + this.Builder.BuildWhere<T>(whereColumns, data);
+                + this.Builder.BuildWhere<T>(data, c => (c.IsKey || (c.ConcurrencyCheck && !(c.Update && c.UpdateSQL == null))));
             return this.Connection.ExecuteAsync(sql, data, this.Transaction, this.Timeout);
         }
 
@@ -166,8 +159,9 @@ namespace DapperAid
         /// <returns>削除された行数</returns>
         public Task<int> DeleteAsync<T>(T data)
         {
+            // PKカラム、楽観同時実行チェック対象カラムをwhere条件カラムとしてSQL生成実行
             var sql = this.Builder.BuildDelete<T>()
-                + this.Builder.BuildWhere<T>(data, true);
+                + this.Builder.BuildWhere<T>(data, c => (c.IsKey || c.ConcurrencyCheck));
             return this.Connection.ExecuteAsync(sql, data, this.Transaction, this.Timeout);
         }
 

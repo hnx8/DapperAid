@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Data;
-using System.Linq.Expressions;
-using Dapper;
-using DapperAid.Helpers;
+﻿using DapperAid.Helpers;
 
 namespace DapperAid
 {
@@ -27,19 +22,6 @@ namespace DapperAid
             {
                 return column.Name + (opIsNot ? "<>" : "=") + "any(" + AddParameter(parameters, column.PropertyInfo.Name, values) + ")";
                 // ※postgresの場合はinと同じ結果が得られるany演算子で代替する（配列パラメータサポートの副作用でin条件のパラメータが展開されず、SQLも展開されないため）
-            }
-
-            /// <summary>
-            /// 標準的な一括InsertのSQLを用いて、指定されたレコードを一括挿入します。
-            /// </summary>
-            public override int InsertRows<T>(IEnumerable<T> data, Expression<System.Func<T, dynamic>> targetColumns, IDbConnection connection, IDbTransaction transaction, int? timeout = null)
-            {
-                var ret = 0;
-                foreach (var sql in BulkInsertHelper.BuildBulkInsert(this, data, targetColumns, base.ToSqlLiteral))
-                {
-                    ret += connection.Execute(sql, null, transaction, timeout);
-                }
-                return ret;
             }
         }
     }

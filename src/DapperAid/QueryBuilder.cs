@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
@@ -23,10 +24,22 @@ namespace DapperAid
         /// </remarks>
         public static QueryBuilder DefaultInstance = new QueryBuilder();
 
-        #region テーブル/カラム構造 --------------------------------------------
 
-        /// <summary>テーブル情報のキャッシュ</summary>
-        protected readonly IDictionary<Type, TableInfo> Tables = new Dictionary<Type, TableInfo>();
+        /// <summary>
+        /// 一括Insert用SQLを生成する際の、SQLクエリ１回での挿入行数の上限です。既定値は1000です。
+        /// </summary>
+        /// <remarks>
+        /// 一度に挿入する行数*列数が多すぎてパフォーマンスが悪化する場合など、値を調整してください。
+        /// ごく一部のDBMSは一括Insert未対応のため1固定となります。
+        /// </remarks>
+        public virtual int MultiInsertRowsPerQuery
+        {
+            get { return _multiInsertRowsPerQuery; }
+            set { _multiInsertRowsPerQuery = value; }
+        }
+        private int _multiInsertRowsPerQuery = 1000; // C#6.0以降でないと自動プロパティの初期値が使えないため旧来の書式とする
+
+        #region テーブル/カラム構造 --------------------------------------------
 
         /// <summary>
         /// 指定された型のテーブル情報を取得します。
@@ -45,17 +58,9 @@ namespace DapperAid
         /// <returns>テーブル情報</returns>
         public TableInfo GetTableInfo(Type tableType)
         {
-            TableInfo tableInfo;
-            lock (this.Tables)
-            {
-                if (!Tables.TryGetValue(tableType, out tableInfo))
-                {
-                    tableInfo = TableInfo.Create(tableType, EscapeIdentifier);
-                    Tables.Add(tableType, tableInfo);
-                }
-            }
-            return tableInfo;
+            return _tables.GetOrAdd(tableType, t => TableInfo.Create(t, EscapeIdentifier));
         }
+        private readonly ConcurrentDictionary<Type, TableInfo> _tables = new ConcurrentDictionary<Type, TableInfo>();
 
         #endregion
 
@@ -308,6 +313,93 @@ namespace DapperAid
         }
 
         /// <summary>
+        /// 指定された型のテーブルにレコードを挿入し、[InsertSQL(RetrieveInsertedId = true)]属性の自動連番カラムで採番されたIDを当該プロパティへセットします。
+        /// </summary>
+        /// <param name="targetColumns">値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
+        /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
+        /// <returns>「insert into [テーブル]([各カラム])values([各設定値]) returning [自動採番カラム]」といったSQL</returns>
+        /// <remarks>
+        /// DBMSに応じたSQLが生成されます。
+        /// 一部のDBMS(Oracleなど)では採番されたIDをoutパラメータに格納するようなSQLが生成されます。
+        /// </remarks>
+        public string BuildInsertAndRetrieveId<T>(Expression<Func<T, dynamic>> targetColumns)
+        {
+            var tableInfo = GetTableInfo<T>();
+            if (tableInfo.RetrieveInsertedIdColumn == null)
+            {
+                throw new ConstraintException("RetrieveInsertedId-Column not specified");
+            }
+            return BuildInsert<T>(targetColumns) + " " + GetInsertedIdReturningSql<T>(tableInfo.RetrieveInsertedIdColumn);
+        }
+        /// <summary>
+        /// 採番された自動連番値を返すSQL句を返します。
+        /// </summary>
+        /// <param name="column">自動採番カラムの情報</param>
+        /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
+        /// <returns>insertSQLの末尾に付加すべき採番ID値取得句(またはセミコロン＋別のSQL)</returns>
+        /// <remarks>
+        /// サブクラスによりオーバーライドされ、DBMSに応じたSQLが生成されます。
+        /// 一部のDBMS(Oracleなど)では採番されたIDをoutパラメータに格納するようなSQLが生成されます。
+        /// </remarks>
+        protected virtual string GetInsertedIdReturningSql<T>(TableInfo.Column column)
+        {
+            // 具体的なDBMSがわからないと自動連番値の取り出し方法が定まらないため既定では例外とする。
+            throw new NotSupportedException("use DBMS-specific QueryBuilder");
+        }
+
+        /// <summary>
+        /// 一括Insert用SQLを生成します。
+        /// </summary>
+        /// <param name="records">挿入するレコード（複数件）</param>
+        /// <param name="targetColumns">値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
+        /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
+        /// <returns>「insert into [テーブル]([各カラム]) values ([各設定値]),([各設定値])...」の静的SQL。一度に挿入する行数がMultiInsertRowsPerQueryを超過しないよう分割して返されます</returns>
+        /// <remarks>一部のDBMSでは生成されるinsert文の内容が異なります。</remarks>
+        public virtual IEnumerable<string> BuildMultiInsert<T>(IEnumerable<T> records, Expression<Func<T, dynamic>> targetColumns = null)
+        {
+            var tableInfo = GetTableInfo<T>();
+            var columns = (targetColumns == null
+                ? tableInfo.Columns.Where(c => c.Insert)
+                : tableInfo.GetColumns(ExpressionHelper.GetMemberNames(targetColumns.Body))).ToArray();
+            var names = new StringBuilder();
+            foreach (var column in columns)
+            {
+                if (names.Length > 0) { names.Append(", "); }
+                names.Append(column.Name);
+            }
+
+            var data = new StringBuilder();
+            var rowCount = 0;
+            foreach (var record in records)
+            {
+                var values = new StringBuilder();
+                foreach (var column in columns)
+                {
+                    values.Append(values.Length == 0 ? "(" : ", ");
+                    values.Append(targetColumns != null || string.IsNullOrWhiteSpace(column.InsertSQL)
+                        ? ToSqlLiteral(MemberAccessor.GetValue(record, column.PropertyInfo))
+                        : column.InsertSQL);
+                }
+                values.Append(")");
+
+                data.AppendLine(data.Length == 0
+                    ? "insert into " + tableInfo.Name + "(" + names.ToString() + ") values"
+                    : ",");
+                data.Append(values.ToString());
+                if (rowCount >= MultiInsertRowsPerQuery)
+                {
+                    yield return data.ToString();
+                    data.Clear();
+                    rowCount = 0;
+                }
+            }
+            if (data.Length > 0)
+            {
+                yield return data.ToString();
+            }
+        }
+
+        /// <summary>
         /// 指定された型のテーブルに対するUPDATE SQLを生成します。
         /// targetColumns省略時は該当テーブルのUpdate対象列すべて(ただしKey項目は除く)、指定時は対象列のみを値更新対象とします。
         /// </summary>
@@ -357,33 +449,21 @@ namespace DapperAid
 
 
         /// <summary>
-        /// 指定された型のテーブルのKey項目を条件としたWhere句を生成します。
+        /// 指定された条件のカラムによるWhere句を生成します。
         /// </summary>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <param name="data">Where条件対象カラムに値が設定されているオブジェクト</param>
-        /// <param name="withConcurrencyCheck">楽観排他更新用SQLのWhere条件を生成する場合、true</param>
+        /// <param name="columnWhere">Where条件対象となるカラムであればtrueを返すラムダ式。例：PK項目を条件とする場合「c => (c.IsKey)」</param>
         /// <returns>SQL文のWhere句</returns>
-        public string BuildWhere<T>(T data, bool withConcurrencyCheck = false)
+        public string BuildWhere<T>(T data, Func<TableInfo.Column, bool> columnWhere)
         {
             var tableInfo = GetTableInfo<T>();
-            var columns = tableInfo.Columns.Where(c => c.IsKey || (withConcurrencyCheck && c.ConcurrencyCheck));
-            return BuildWhere<T>(columns, data);
-        }
+            var columns = tableInfo.Columns.Where(columnWhere);
 
-        /// <summary>
-        /// 指定されたカラムの値を条件としたWhere句を生成します。
-        /// </summary>
-        /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
-        /// <param name="columns">Where条件対象カラムの列挙</param>
-        /// <param name="data">Where条件対象カラムに値が設定されているオブジェクト</param>
-        /// <param name="parameters">パラメータバインドも行う場合は、Dapperパラメーターオブジェクト</param>
-        /// <returns>SQL文のWhere句</returns>
-        protected internal string BuildWhere<T>(IEnumerable<TableInfo.Column> columns, T data, DynamicParameters parameters = null)
-        {
             var sb = new StringBuilder();
             foreach (var column in columns)
             {
-                if (sb.Length > 0) { sb.Append(" and "); }
+                sb.Append(sb.Length == 0 ? " where " : " and ");
                 var value = (data == null ? null : MemberAccessor.GetValue(data, column.PropertyInfo));
                 if (data != null && IsNull(value))
                 {
@@ -393,12 +473,14 @@ namespace DapperAid
                 {
                     sb.Append(column.Name)
                         .Append("=")
-                        .Append(parameters == null
-                            ? (ParameterMarker + column.PropertyInfo.Name)
-                            : AddParameter(parameters, column.PropertyInfo.Name, value));
+                        .Append(ParameterMarker + column.PropertyInfo.Name);
                 }
             }
-            return (sb.Length == 0 ? "" : " where " + sb.ToString());
+            if (sb.Length == 0)
+            {
+                throw new ArgumentException("no condition column");
+            }
+            return sb.ToString();
         }
 
         /// <summary>
@@ -410,27 +492,11 @@ namespace DapperAid
         /// <returns>SQL文のWhere句</returns>
         public string BuildWhere<T>(DynamicParameters parameters, Expression<Func<T>> keyValues)
         {
-            var memberExpr = (keyValues.Body as MemberExpression);
-            if (memberExpr != null)
-            {   // 特例対応：ラムダの戻り値として指定されたオブジェクトをもとに楽観排他更新のWhere条件式を生成して返す
-                var data = (T)ExpressionHelper.EvaluateValue(memberExpr);
-                var whereColumns = GetTableInfo<T>().Columns.Where(c => c.IsKey || c.ConcurrencyCheck);
-                return BuildWhere<T>(whereColumns, data, parameters);
-            }
-
-            var initExpr = (keyValues.Body as MemberInitExpression);
-            if (initExpr == null || initExpr.Bindings.Count == 0)
-            {
-                throw new ArgumentException("no condition column");
-            }
-
             var tableInfo = GetTableInfo<T>();
             var sb = new StringBuilder();
-            foreach (var member in initExpr.Bindings)
+            Action<TableInfo.Column, object> bindWhere = (column, value) =>
             {
-                var column = tableInfo.GetColumn(member.Member.Name);
-                var value = ExpressionHelper.EvaluateValue((member as MemberAssignment).Expression);
-                if (sb.Length > 0) { sb.Append(" and "); }
+                sb.Append(sb.Length == 0 ? " where " : " and ");
                 if (IsNull(value))
                 {
                     sb.Append(column.Name).Append(" is null");
@@ -441,8 +507,34 @@ namespace DapperAid
                         .Append("=")
                         .Append(AddParameter(parameters, column.PropertyInfo.Name, value));
                 }
+            };
+
+            var memberExpr = (keyValues.Body as MemberExpression);
+            var initExpr = (keyValues.Body as MemberInitExpression);
+            if (memberExpr != null)
+            {   // 特例対応：ラムダの戻り値として指定されたオブジェクトをもとに楽観排他更新のWhere条件式を生成
+                var data = (T)ExpressionHelper.EvaluateValue(memberExpr);
+                foreach (var column in tableInfo.Columns.Where(c => c.IsKey || c.ConcurrencyCheck))
+                {
+                    var value = MemberAccessor.GetValue(data, column.PropertyInfo);
+                    bindWhere(column, value);
+                }
             }
-            return " where " + sb.ToString();
+            else if (initExpr != null)
+            {   // 初期化子をもとにWhere条件式を生成
+                foreach (var member in initExpr.Bindings)
+                {
+                    var column = tableInfo.GetColumn(member.Member.Name);
+                    var value = ExpressionHelper.EvaluateValue((member as MemberAssignment).Expression);
+                    bindWhere(column, value);
+                }
+            }
+
+            if (sb.Length == 0)
+            {
+                throw new ArgumentException("no condition column");
+            }
+            return sb.ToString();
         }
 
         /// <summary>
@@ -669,73 +761,6 @@ namespace DapperAid
         {
             return column.Name + (opIsNot ? " not" : "") + " in " + AddParameter(parameters, column.PropertyInfo.Name, values);
             // →DapperのList Support機能により、カッコつきin句「in (@xx1, @xx2, ...)」へ展開されたうえで実行される
-        }
-
-        #endregion
-
-        #region SQL実行(DBMS固有) ----------------------------------------------
-
-        /// <summary>
-        /// 指定されたレコードを挿入し、[InsertSQL(RetrieveInsertedId = true)]属性で指定された自動連番カラムに採番されたIDを当該プロパティにセットします。
-        /// </summary>
-        /// <param name="data">挿入するレコード</param>
-        /// <param name="targetColumns">値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
-        /// <param name="connection">DB接続</param>
-        /// <param name="transaction">DBトランザクション</param>
-        /// <param name="timeout">タイムアウト時間</param>
-        /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
-        /// <returns>挿入された行数(=1件)</returns>
-        /// <remarks>
-        /// 自動連番に対応していないテーブル/DBMSでは例外がスローされます。
-        /// サブクラスによりオーバーライドされることがあります（Oracleなどでは大幅に挙動が変わります）
-        /// </remarks>
-        public virtual int InsertAndRetrieveId<T>(T data, Expression<Func<T, dynamic>> targetColumns, IDbConnection connection, IDbTransaction transaction, int? timeout = null)
-        {
-            var tableInfo = GetTableInfo<T>();
-            if (tableInfo.RetrieveInsertedIdColumn == null)
-            {
-                throw new ConstraintException("RetrieveInsertedId-Column not specified");
-            }
-
-            var sql = BuildInsert<T>(targetColumns) + " " + GetInsertedIdReturningSql<T>(tableInfo.RetrieveInsertedIdColumn);
-            var insertedId = connection.ExecuteScalar(sql, data, transaction, timeout);
-            MemberAccessor.SetValue(data, tableInfo.RetrieveInsertedIdColumn.PropertyInfo, Convert.ChangeType(insertedId, tableInfo.RetrieveInsertedIdColumn.PropertyInfo.PropertyType));
-
-            return 1;
-        }
-
-        /// <summary>
-        /// 採番された自動連番値を返すSQL句を返します。
-        /// </summary>
-        /// <param name="column">自動採番カラムの情報</param>
-        /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
-        /// <returns>insertSQLの末尾に付加すべき採番ID値取得句(またはセミコロン＋別のSQL)</returns>
-        /// <remarks>
-        /// サブクラスによりオーバーライドされ、DBMSに応じたSQLが生成されます。
-        /// </remarks>
-        protected virtual string GetInsertedIdReturningSql<T>(TableInfo.Column column)
-        {
-            // 具体的なDBMSがわからないと自動連番値の取り出し方法が定まらないため既定では例外とする。
-            throw new NotSupportedException("use DBMS-specific QueryBuilder");
-        }
-
-        /// <summary>
-        /// 指定されたレコードを一括挿入します。
-        /// </summary>
-        /// <param name="data">挿入するレコード（複数件）</param>
-        /// <param name="targetColumns">値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
-        /// <param name="connection">DB接続</param>
-        /// <param name="transaction">DBトランザクション</param>
-        /// <param name="timeout">タイムアウト時間</param>
-        /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
-        /// <returns>挿入された行数</returns>
-        /// <remarks>
-        /// サブクラスによりオーバーライドされることがあります（DBMSによっては一括インサートにて高速にデータ挿入が行われます）
-        /// </remarks>
-        public virtual int InsertRows<T>(IEnumerable<T> data, Expression<Func<T, dynamic>> targetColumns, IDbConnection connection, IDbTransaction transaction, int? timeout = null)
-        {
-            var sql = this.BuildInsert<T>(targetColumns);
-            return connection.Execute(sql, data, transaction, timeout);
         }
 
         #endregion

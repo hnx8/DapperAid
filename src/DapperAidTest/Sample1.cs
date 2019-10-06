@@ -151,14 +151,14 @@ namespace DapperAidTest
                 int insert2 = connection.Insert(rec2,
                     r => new { r.Name, r.CreatedAt });
 
+                var rec3 = new Member { Name = "IdentityTest", Tel = "7777" };
                 int insert3 = connection.Insert(
-                    () => new Member { Id = 888, Name = "ParticularColumnOnly2" });
-
-                var rec4 = new Member { Name = "IdentityTest", Tel = "7777" };
-                int insert4 = connection.Insert(
-                    rec4,
+                    rec3,
                     retrieveInsertedId: true);
-                Trace.WriteLine("insertedID=" + rec4.Id); // -> 4
+                Trace.WriteLine("insertedID=" + rec3.Id); // -> 3
+
+                int insertX = connection.Insert(
+                    () => new Member { Id = 888, Name = "ParticularColumnOnly2" });
 
                 // insert records -------------------
                 int insertMulti = connection.InsertRows(new[] {

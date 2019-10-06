@@ -1,9 +1,8 @@
 ﻿using System;
-using System.Data;
+using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Text;
-using Dapper;
 using DapperAid.Helpers;
 
 namespace DapperAid
@@ -24,40 +23,63 @@ namespace DapperAid
                 return (base.IsNull(value) || (value is string && string.IsNullOrEmpty(value as string)));
             }
 
+            /// <summary>INSERT実行時の自動連番値を取得するSQL句として、outパラメータへのreturning句を付加します。</summary>
+            protected override string GetInsertedIdReturningSql<T>(TableInfo.Column column)
+            {
+                return " returning " + column.Name + " into " + ParameterMarker + column.PropertyInfo.Name;
+            }
+
             /// <summary>
-            /// 指定されたレコードを挿入し、[InsertSQL(RetrieveInsertedId = true)]属性で指定された自動連番カラムに採番されたIDを当該プロパティにセットします。
-            /// (Oracleはoutパラメータより把握)
+            /// Oracle向けの一括Insert用SQLを生成します。
             /// </summary>
-            public override int InsertAndRetrieveId<T>(T data, Expression<Func<T, dynamic>> targetColumns, IDbConnection connection, IDbTransaction transaction, int? timeout = null)
+            /// <param name="records">挿入するレコード（複数件）</param>
+            /// <param name="targetColumns">値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
+            /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
+            /// <returns>「insert all into [テーブル]([各カラム]) values ([各設定値]) ...」のSQL。一度に挿入する行数がMultiInsertRowsPerQueryを超過しないよう分割して返されます</returns>
+            /// <remarks>Oracleの一括InsertはSQL-92の構文ではなくOracle固有のinsert-all構文を使用</remarks>
+            public override IEnumerable<string> BuildMultiInsert<T>(IEnumerable<T> records, Expression<Func<T, dynamic>> targetColumns = null)
             {
                 var tableInfo = GetTableInfo<T>();
-                if (tableInfo.RetrieveInsertedIdColumn == null)
-                {
-                    throw new ConstraintException("RetrieveInsertedId-Column not specified");
-                }
-
-                // Oracleの自動採番に限りoutコマンドパラメータから採番されたIDを把握するため、DynamicParameterを自前で生成の上outパラメータを追加する
-                var columns = (targetColumns == null)
+                var columns = (targetColumns == null
                     ? tableInfo.Columns.Where(c => c.Insert)
-                    : tableInfo.GetColumns(ExpressionHelper.GetMemberNames(targetColumns.Body));
-                var parameters = new DynamicParameters();
+                    : tableInfo.GetColumns(ExpressionHelper.GetMemberNames(targetColumns.Body))).ToArray();
+                var names = new StringBuilder();
                 foreach (var column in columns)
                 {
-                    AddParameter(parameters, column.PropertyInfo.Name, MemberAccessor.GetValue(data, column.PropertyInfo));
+                    if (names.Length > 0) { names.Append(", "); }
+                    names.Append(column.Name);
                 }
-                var idProp = tableInfo.RetrieveInsertedIdColumn.PropertyInfo;
 
-                var sql = BuildInsert<T>(targetColumns);
-                if (!parameters.ParameterNames.Contains(idProp.Name))
+                var data = new StringBuilder();
+                var count = 0;
+                foreach (var record in records)
                 {
-                    sql += " returning " + tableInfo.RetrieveInsertedIdColumn.Name + " into " + ParameterMarker + idProp.Name;
-                    parameters.Add(idProp.Name, MemberAccessor.GetValue(data, idProp), null, ParameterDirection.Output);
-                }
-                connection.Execute(sql, parameters, transaction, timeout);
-                var insertedId = Convert.ChangeType(parameters.Get<object>(idProp.Name), idProp.PropertyType);
-                MemberAccessor.SetValue(data, idProp, insertedId);
+                    var values = new StringBuilder();
+                    foreach (var column in columns)
+                    {
+                        values.Append(values.Length == 0 ? "(" : ", ");
+                        values.Append(targetColumns != null || string.IsNullOrWhiteSpace(column.InsertSQL)
+                            ? ToSqlLiteral(MemberAccessor.GetValue(record, column.PropertyInfo))
+                            : column.InsertSQL);
+                    }
+                    values.Append(")");
 
-                return 1;
+                    if (data.Length == 0)
+                    {
+                        data.AppendLine("insert all");
+                    }
+                    data.AppendLine(" into " + tableInfo.Name + "(" + names.ToString() + ") values" + values.ToString());
+                    if (count >= MultiInsertRowsPerQuery)
+                    {
+                        yield return data.ToString() + " select null from dual";
+                        data.Clear();
+                        count = 0;
+                    }
+                }
+                if (data.Length > 0)
+                {
+                    yield return data.ToString() + " select null from dual";
+                }
             }
 
             /// <summary>パラメータ値上限1000件を考慮してIn条件式を組み立てます(Oracleのみの特殊対処)</summary>

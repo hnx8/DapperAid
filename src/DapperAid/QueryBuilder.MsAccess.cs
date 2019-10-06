@@ -10,6 +10,13 @@ namespace DapperAid
         /// </summary>
         public class MsAccess : QueryBuilder
         {
+            /// <summary>MSAccessでは一括Insertに対応していないため、SQLクエリ１回での挿入行数は１固定・変更不可となります。</summary>
+            public override int MultiInsertRowsPerQuery
+            {
+                get { return 1; }
+                set { }
+            }
+
             /// <summary>SQL識別子（テーブル名/カラム名等）をエスケープします。MsAccessでは"[","]"を使用します。</summary>
             public override string EscapeIdentifier(string identifier)
             {

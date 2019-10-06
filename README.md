@@ -89,7 +89,7 @@ void OperationExample() {
   - new QueryBuilder.Postgres()
   - new QueryBuilder.SQLite()
   - new QueryBuilder.SqlServer()
-  - new QueryBuilder.MsAccess() // can also be used for SQLServerCE
+  - new QueryBuilder.MsAccess() -- can also be used for SQLServerCompact
   - new QueryBuilder.DB2()
 
   These instance generates appropriate SQL statement for your DBMS.  
@@ -163,7 +163,7 @@ void OperationExample() {
     //    values (@Name, @Tel, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ; select LAST_INSERT_ROWID()
     Trace.WriteLine("insertedID=" + rec3.Id); // The value assigned to the "Id" column is set
 ```
-- Note: In this example, the [[InsertSql](#insertsqlattribute)] attribute is specified that  
+- Note: In these examples, the [[InsertSql](#insertsqlattribute)] attribute is specified that  
   the "Id" column is autoincrement and obtains the registered value.
 
 ### `Insert(specifiedColumnValue)` : returns 1(inserted row)
@@ -180,9 +180,13 @@ void OperationExample() {
         new Member { Name = "MultiInsert2", Tel = "999-999-9999" },
         new Member { Name = "MultiInsert3", Tel = "88-8888-8888" },
     });
-    // -> execute insert 3 rows
+    // -> insert into Members("Name", Phone_No, "CreatedAt", "UpdatedAt") values
+    //   ('MultiInsert1', null, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    //   ('MultiInsert2', '999-999-9999', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    //   ('MultiInsert3', '88-8888-8888', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 ```
-- Note: PostgreSQL, MySQL and SQLite are inserted faster by Bulk-Insert.
+- Note: MultiRow-Insert is a SQL-92 feature and is supported by DB2, MySQL, PostgreSQL, SQL Server, SQLite (3.7.11 or later), Oracle ("INSERT ALL" statement), and so on. 
+- Note: If there are many records (by default, more than 1000), the query will be executed in multiple statements. You can use the "MultiInsertRowsPerQuery" property to change the number of records inserted by a single query.
 
 ### `Update(record[, targetColumns])` : returns the number of updated rows
 ```cs

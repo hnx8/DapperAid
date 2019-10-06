@@ -1,9 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Data;
-using System.Linq.Expressions;
 using System.Text;
-using Dapper;
 using DapperAid.Helpers;
 
 namespace DapperAid
@@ -29,28 +25,22 @@ namespace DapperAid
                 NO_BACKSLASH_ESCAPES = false;
             }
 
-            /// <summary>テーブル名/カラム名のエスケープに使用する文字</summary>
-            protected readonly string EscapeMark;
-
-            /// <summary>一括Insert等のSQLの最大文字列長</summary>
-            protected readonly int SqlMaxLength;
-
             /// <summary>
             /// インスタンスを初期化します。
             /// </summary>
-            /// <param name="isAnsiMode">ANSI_MODEではない場合、明示的にfalseを指定</param>
-            /// <param name="sqlMaxLength">一括InsertのSQLの最大文字列長、既定では16MB。大量データの一括Insertを行う際はmax_allowed_packetの指定に応じた値を設定</param>
+            /// <param name="isAnsiMode">未使用の引数です</param>
+            /// <param name="sqlMaxLength">未使用の引数です</param>
+            [Obsolete("ソースコード改善により引数付きコンストラクタは使用されなくなりました")]
             public MySql(bool isAnsiMode = true, int sqlMaxLength = 16000000)
                 : this()
             {
-                EscapeMark = (isAnsiMode ? "\"" : "`");
-                SqlMaxLength = sqlMaxLength;
+                // 仕様変更により初期化処理消滅
             }
 
-            /// <summary>SQL識別子（テーブル名/カラム名等）をエスケープします。MySQL系では「"」または「`]を使用します。</summary>
+            /// <summary>SQL識別子（テーブル名/カラム名等）をエスケープします。MySQL系では「`]を使用します。</summary>
             public override string EscapeIdentifier(string identifier)
             {
-                return EscapeMark + identifier.Replace(EscapeMark, EscapeMark + EscapeMark) + EscapeMark;
+                return "`" + identifier.Replace("`", "``") + "`";
             }
 
             /// <summary>
@@ -103,19 +93,6 @@ namespace DapperAid
             protected override string GetInsertedIdReturningSql<T>(TableInfo.Column column)
             {
                 return "; select LAST_INSERT_ID()";
-            }
-
-            /// <summary>
-            /// 標準的な一括InsertのSQLを用いて、指定されたレコードを一括挿入します。
-            /// </summary>
-            public override int InsertRows<T>(IEnumerable<T> data, Expression<System.Func<T, dynamic>> targetColumns, IDbConnection connection, IDbTransaction transaction, int? timeout = null)
-            {
-                var ret = 0;
-                foreach (var sql in BulkInsertHelper.BuildBulkInsert(this, data, targetColumns, base.ToSqlLiteral, 999999))
-                {
-                    ret += connection.Execute(sql, null, transaction, timeout);
-                }
-                return ret;
             }
         }
     }
