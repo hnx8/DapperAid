@@ -79,20 +79,27 @@ namespace DapperAid
         /// </summary>
         /// <param name="data">挿入するレコード</param>
         /// <param name="targetColumns">値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
-        /// <param name="retrieveInsertedId">[InsertSQL(RetrieveInsertedId = true)]属性で指定された自動連番カラムについて、挿入時に採番されたIDを当該プロパティにセットする場合は、trueを指定</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>挿入された行数</returns>
-        public Task<int> InsertAsync<T>(T data, Expression<Func<T, dynamic>> targetColumns = null, bool retrieveInsertedId = false)
+        public Task<int> InsertAsync<T>(T data, Expression<Func<T, dynamic>> targetColumns = null)
         {
-            if (retrieveInsertedId)
-            {   // 自動連番Insert
-                return Task<int>.Run(() => this.InsertAndRetrieveId(data, targetColumns));
-            }
-            else
-            {   // 通常Insert
-                var sql = this.Builder.BuildInsert<T>(targetColumns);
-                return this.Connection.ExecuteAsync(sql, data, this.Transaction, this.Timeout);
-            }
+            var sql = this.Builder.BuildInsert<T>(targetColumns);
+            return this.Connection.ExecuteAsync(sql, data, this.Transaction, this.Timeout);
+        }
+
+        /// <summary>
+        /// 指定されたレコードを非同期で挿入し、[InsertSQL(RetrieveInsertedId = true)]属性の自動連番カラムで採番されたIDを当該プロパティへセットします。
+        /// </summary>
+        /// <param name="data">挿入するレコード</param>
+        /// <param name="targetColumns">値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
+        /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
+        /// <returns>挿入された行数</returns>
+        /// <remarks>
+        /// 自動連番に対応していないテーブル/DBMSでは例外がスローされます。
+        /// </remarks>
+        public Task<int> InsertAndRetrieveIdAsync<T>(T data, Expression<Func<T, dynamic>> targetColumns = null)
+        {
+            return Task<int>.Run(() => this.InsertAndRetrieveId(data, targetColumns));
         }
 
         /// <summary>

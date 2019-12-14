@@ -144,7 +144,7 @@ void OperationExample() {
         r => (r.Id >= 3 && r.Id <= 9));
     // -> select count(*) from Members where "Id">=@Id(=3) and "Id"<=@P01(=9)
 ```
-### `Insert(record[, targetColumns[, retrieveInsertedId:bool]])` : returns 1(inserted row)
+### `Insert(record[, targetColumns])` : returns 1(inserted row)
 ```cs
     var rec1 = new Member { Name = "InsertTest", Tel = "177" };
     int insert1 = connection.Insert(rec1);
@@ -155,10 +155,11 @@ void OperationExample() {
     int insert2 = connection.Insert(rec2,
         r => new { r.Name, r.CreatedAt });
     // -> insert into Members("Name", "CreatedAt") values (@Name, @CreatedAt(=null))
-
+```
+### `InsertAndRetrieveId(record[, targetColumns])` : returns 1(inserted row)
+```cs
     var rec3 = new Member { Name = "IdentityTest", Tel = "7777" };
-    int insert3 = connection.Insert(rec3, 
-        retrieveInsertedId: true);
+    int insert3 = connection.InsertAndRetrieveId(rec3);
     // -> insert into Members("Name", Phone_No, "CreatedAt", "UpdatedAt")
     //    values (@Name, @Tel, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ; select LAST_INSERT_ROWID()
     Trace.WriteLine("insertedID=" + rec3.Id); // The value assigned to the "Id" column is set
@@ -186,7 +187,7 @@ void OperationExample() {
     //   ('MultiInsert3', '88-8888-8888', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 ```
 - Note: MultiRow-Insert is a SQL-92 feature and is supported by DB2, MySQL, PostgreSQL, SQL Server, SQLite (3.7.11 or later), Oracle ("INSERT ALL" statement), and so on. 
-- Note: If there are many records (by default, more than 1000), the query will be executed in multiple statements. You can use the "MultiInsertRowsPerQuery" property to change the number of records inserted by a single query.
+- Note: If there are many records (by default, more than 1000), the query will be executed in multiple statements. You can use the `MultiInsertRowsPerQuery` property to change the number of records inserted by a single query.
 
 ### `Update(record[, targetColumns])` : returns the number of updated rows
 ```cs

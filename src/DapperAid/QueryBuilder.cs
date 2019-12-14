@@ -110,7 +110,6 @@ namespace DapperAid
                 {
                     sb.Append(delimiter).Append(ToSqlLiteral(v));
                     delimiter = ",";
-
                 }
                 sb.Append(")");
                 return sb.ToString();
@@ -313,7 +312,7 @@ namespace DapperAid
         }
 
         /// <summary>
-        /// 指定された型のテーブルにレコードを挿入し、[InsertSQL(RetrieveInsertedId = true)]属性の自動連番カラムで採番されたIDを当該プロパティへセットします。
+        /// 指定された型のテーブルにレコードを挿入し、[InsertSQL(RetrieveInsertedId = true)]属性の自動連番カラムで採番されたIDを当該プロパティへセットするSQLを生成します。
         /// </summary>
         /// <param name="targetColumns">値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
@@ -490,6 +489,7 @@ namespace DapperAid
         /// <param name="keyValues">レコード特定Key値を初期化子で指定するラムダ式。例：「<c>() => new Tbl1 { Key1 = 1, Key2 = 99 }</c>」</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>SQL文のWhere句</returns>
+        /// <remarks>parametersにnullが指定されている場合は、パラメータバインドは行わず静的なSQLを生成します。</remarks>
         public string BuildWhere<T>(DynamicParameters parameters, Expression<Func<T>> keyValues)
         {
             var tableInfo = GetTableInfo<T>();
@@ -545,6 +545,7 @@ namespace DapperAid
         /// <param name="where">式木（ラムダ）により記述された条件式</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>生成されたWhere句（条件指定なしの場合は空文字）</returns>
+        /// <remarks>parametersにnullが指定されている場合は、パラメータバインドは行わず静的なSQLを生成します。</remarks>
         public string BuildWhere<T>(DynamicParameters parameters, Expression<Func<T, bool>> where)
         {
             if (where == null)

@@ -132,20 +132,12 @@ namespace DapperAid
         /// </summary>
         /// <param name="data">挿入するレコード</param>
         /// <param name="targetColumns">値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
-        /// <param name="retrieveInsertedId">[InsertSQL(RetrieveInsertedId = true)]属性で指定された自動連番カラムについて、挿入時に採番されたIDを当該プロパティにセットする場合は、trueを指定</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>挿入された行数</returns>
-        public int Insert<T>(T data, Expression<Func<T, dynamic>> targetColumns = null, bool retrieveInsertedId = false)
+        public int Insert<T>(T data, Expression<Func<T, dynamic>> targetColumns = null)
         {
-            if (retrieveInsertedId)
-            {   // 自動連番Insert
-                return this.InsertAndRetrieveId(data, targetColumns);
-            }
-            else
-            {   // 通常Insert
-                var sql = this.Builder.BuildInsert<T>(targetColumns);
-                return this.Connection.Execute(sql, data, this.Transaction, this.Timeout);
-            }
+            var sql = this.Builder.BuildInsert<T>(targetColumns);
+            return this.Connection.Execute(sql, data, this.Transaction, this.Timeout);
         }
 
         /// <summary>
@@ -158,7 +150,7 @@ namespace DapperAid
         /// <remarks>
         /// 自動連番に対応していないテーブル/DBMSでは例外がスローされます。
         /// </remarks>
-        public int InsertAndRetrieveId<T>(T data, Expression<Func<T, dynamic>> targetColumns)
+        public int InsertAndRetrieveId<T>(T data, Expression<Func<T, dynamic>> targetColumns = null)
         {
             var sql = this.Builder.BuildInsertAndRetrieveId<T>(targetColumns);
 

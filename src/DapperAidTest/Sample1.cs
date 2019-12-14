@@ -152,9 +152,7 @@ namespace DapperAidTest
                     r => new { r.Name, r.CreatedAt });
 
                 var rec3 = new Member { Name = "IdentityTest", Tel = "7777" };
-                int insert3 = connection.Insert(
-                    rec3,
-                    retrieveInsertedId: true);
+                int insert3 = connection.InsertAndRetrieveId(rec3);
                 Trace.WriteLine("insertedID=" + rec3.Id); // -> 3
 
                 int insertX = connection.Insert(
