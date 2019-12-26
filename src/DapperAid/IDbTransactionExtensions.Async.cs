@@ -132,14 +132,44 @@ namespace DapperAid
         /// 指定されたレコードを非同期で一括挿入します。
         /// </summary>
         /// <param name="transaction">DBトランザクション</param>
-        /// <param name="data">挿入するレコード（複数件）</param>
+        /// <param name="records">挿入するレコード（複数件）</param>
         /// <param name="targetColumns">値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
         /// <param name="timeout">タイムアウト時間</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>挿入された行数</returns>
-        public static Task<int> InsertRowsAsync<T>(this IDbTransaction transaction, IEnumerable<T> data, Expression<Func<T, dynamic>> targetColumns = null, int? timeout = null)
+        public static Task<int> InsertRowsAsync<T>(this IDbTransaction transaction, IEnumerable<T> records, Expression<Func<T, dynamic>> targetColumns = null, int? timeout = null)
         {
-            return new QueryRunner(transaction, timeout).InsertRowsAsync(data, targetColumns);
+            return new QueryRunner(transaction, timeout).InsertRowsAsync(records, targetColumns);
+        }
+
+        /// <summary>
+        /// 指定されたレコードを非同期で挿入または更新します。(既存レコードはUPDATE／未存在ならINSERTを行います)
+        /// </summary>
+        /// <param name="transaction">DBトランザクション</param>
+        /// <param name="data">挿入または更新するレコード</param>
+        /// <param name="insertTargetColumns">insert実行時の値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2, t.Col3 }</c>」</param>
+        /// <param name="updateTargetColumns">update実行時の値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col2, t.Col3 }</c>」</param>
+        /// <param name="timeout">タイムアウト時間</param>
+        /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
+        /// <returns>挿入または更新された行数</returns>
+        public static Task<int> InsertOrUpdateAsync<T>(this IDbTransaction transaction, T data, Expression<Func<T, dynamic>> insertTargetColumns = null, Expression<Func<T, dynamic>> updateTargetColumns = null, int? timeout = null)
+        {
+            return new QueryRunner(transaction, timeout).InsertOrUpdateAsync(data, insertTargetColumns, updateTargetColumns);
+        }
+
+        /// <summary>
+        /// 指定されたレコードを非同期で一括挿入または更新します。(既存レコードはUPDATE／未存在ならINSERTを行います)
+        /// </summary>
+        /// <param name="transaction">DBトランザクション</param>
+        /// <param name="records">挿入または更新するレコード（複数件）</param>
+        /// <param name="insertTargetColumns">insert実行時の値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2, t.Col3 }</c>」</param>
+        /// <param name="updateTargetColumns">update実行時の値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col2, t.Col3 }</c>」</param>
+        /// <param name="timeout">タイムアウト時間</param>
+        /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
+        /// <returns>挿入または更新された行数</returns>
+        public static Task<int> InsertOrUpdateRowsAsync<T>(this IDbTransaction transaction, IEnumerable<T> records, Expression<Func<T, dynamic>> insertTargetColumns = null, Expression<Func<T, dynamic>> updateTargetColumns = null, int? timeout = null)
+        {
+            return new QueryRunner(transaction, timeout).InsertOrUpdateRowsAsync(records, insertTargetColumns, updateTargetColumns);
         }
 
 

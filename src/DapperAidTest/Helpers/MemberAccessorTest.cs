@@ -1,6 +1,6 @@
-﻿using DapperAid.Helpers;
+﻿using System.Reflection;
+using DapperAid.Helpers;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using System.Reflection;
 
 namespace DapperAidTest.Helpers
 {

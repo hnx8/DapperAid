@@ -26,11 +26,11 @@ namespace DapperAid
 
 
         /// <summary>
-        /// 一括Insert用SQLを生成する際の、SQLクエリ１回での挿入行数の上限です。既定値は1000です。
+        /// 一括Insert/Upsert用SQLを生成する際の、SQLクエリ１回での挿入行数の上限です。既定値は1000です。
         /// </summary>
         /// <remarks>
         /// 一度に挿入する行数*列数が多すぎてパフォーマンスが悪化する場合など、値を調整してください。
-        /// ごく一部のDBMSは一括Insert未対応のため1固定となります。
+        /// ごく一部のDBMS(MSAccessなど)は一括Insert未対応のため1固定となります。
         /// </remarks>
         public virtual int MultiInsertRowsPerQuery
         {
@@ -38,6 +38,21 @@ namespace DapperAid
             set { _multiInsertRowsPerQuery = value; }
         }
         private int _multiInsertRowsPerQuery = 1000; // C#6.0以降でないと自動プロパティの初期値が使えないため旧来の書式とする
+
+        /// <summary>
+        /// DBMSがUpsert(MERGE)に対応していればtrue/未対応ならfalseを設定します。既定値はtrueです。
+        /// </summary>
+        /// <remarks>
+        /// SQLServer2008未満、PostgresSQL9.5未満・SQLite3.24(2018-06-04)未満など未対応の環境ではfalseを設定してください。
+        /// ごく一部のDBMS(MSAccessなど)はUpsert未対応のためfalse固定となります。
+        /// </remarks>
+        public virtual bool SupportsUpsert
+        {
+            get { return _supportsUpsert; }
+            set { _supportsUpsert = value; }
+        }
+        private bool _supportsUpsert = true; // C#6.0以降でないと自動プロパティの初期値が使えないため旧来の書式とする
+
 
         #region テーブル/カラム構造 --------------------------------------------
 
@@ -360,42 +375,204 @@ namespace DapperAid
             var columns = (targetColumns == null
                 ? tableInfo.Columns.Where(c => c.Insert)
                 : tableInfo.GetColumns(ExpressionHelper.GetMemberNames(targetColumns.Body))).ToArray();
-            var names = new StringBuilder();
-            foreach (var column in columns)
-            {
-                if (names.Length > 0) { names.Append(", "); }
-                names.Append(column.Name);
-            }
+            var columnNames = string.Join(", ", columns.Select(c => c.Name));
 
-            var data = new StringBuilder();
+            var sb = new StringBuilder();
             var rowCount = 0;
             foreach (var record in records)
             {
-                var values = new StringBuilder();
-                foreach (var column in columns)
-                {
-                    values.Append(values.Length == 0 ? "(" : ", ");
-                    values.Append(targetColumns != null || string.IsNullOrWhiteSpace(column.InsertSQL)
+                var values = string.Join(", ", columns.Select(column =>
+                    (targetColumns != null || string.IsNullOrWhiteSpace(column.InsertSQL))
                         ? ToSqlLiteral(MemberAccessor.GetValue(record, column.PropertyInfo))
-                        : column.InsertSQL);
-                }
-                values.Append(")");
+                        : column.InsertSQL)
+                    );
 
-                data.AppendLine(data.Length == 0
-                    ? "insert into " + tableInfo.Name + "(" + names.ToString() + ") values"
+                sb.AppendLine(sb.Length == 0
+                    ? "insert into " + tableInfo.Name + "(" + columnNames + ") values"
                     : ",");
-                data.Append(values.ToString());
+                sb.Append("(" + values + ")");
+                rowCount++;
                 if (rowCount >= MultiInsertRowsPerQuery)
                 {
-                    yield return data.ToString();
-                    data.Clear();
+                    yield return sb.ToString();
+                    sb.Clear();
                     rowCount = 0;
                 }
             }
-            if (data.Length > 0)
+            if (sb.Length > 0)
             {
-                yield return data.ToString();
+                yield return sb.ToString();
             }
+        }
+
+        /// <summary>
+        /// 指定された型のテーブルに対するUPSERT SQLを生成します。(既存レコードはUPDATE／未存在ならINSERTを行います)
+        /// </summary>
+        /// <param name="insertTargetColumns">insert実行時の値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2, t.Col3 }</c>」</param>
+        /// <param name="updateTargetColumns">update実行時の値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col2, t.Col3 }</c>」</param>
+        /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
+        /// <returns>「merge into TABLE using (各カラムの設定値) ... when matched then update ... when not matched then insert ...」などのUpsert用SQL</returns>
+        /// <remarks>サブクラスによりオーバーライドされ、DBMSに応じたSQL文が生成されます。基底クラスではSQL2003に準じたmerge文を生成します。</remarks>
+        public virtual string BuildUpsert<T>(Expression<Func<T, dynamic>> insertTargetColumns = null, Expression<Func<T, dynamic>> updateTargetColumns = null)
+        {
+            var tableInfo = GetTableInfo<T>();
+            // values生成対象カラム（insert対象カラムのうちSQLリテラルによる初期化を行わないカラム）を把握
+            var valuesColumns = (insertTargetColumns == null
+                ? tableInfo.Columns.Where(c => c.Insert && string.IsNullOrEmpty(c.InsertSQL))
+                : tableInfo.GetColumns(ExpressionHelper.GetMemberNames(insertTargetColumns.Body))).ToArray();
+            // 条件式部分を把握
+            var postfix = BuildUpsertCond(insertTargetColumns, updateTargetColumns);
+            // DBMSに応じたusing句を取り出し、merge分として完成
+            return "merge into " + tableInfo.Name + " as t "
+                + BuildUpsertUsingClause<T>(valuesColumns)
+                + postfix;
+            //
+        }
+        /// <summary>
+        /// 一括Upsert(merge)のusing句を生成します。
+        /// </summary>
+        /// <param name="columns">recordsから挿入時の値を取り出すべきカラム</param>
+        /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
+        /// <returns>「using(values (@パラメータ名, ...)) as s(カラム名, ...)」などといったusing句</returns>
+        /// <remarks>サブクラスによりオーバーライドされ、DBMSに応じたusing句が返されます。（ソーステーブルは別名sとすること）</remarks>
+        protected virtual string BuildUpsertUsingClause<T>(IReadOnlyList<TableInfo.Column> columns)
+        {
+            return "using(values"
+                + Environment.NewLine
+                + "(" + string.Join(",", columns.Select(column => (ParameterMarker + column.PropertyInfo.Name))) + ")"
+                + Environment.NewLine
+                + ") as s(" + string.Join(",", columns.Select(c => c.Name)) + ")";
+        }
+
+        /// <summary>
+        /// 一括Upsert用SQLを生成します。(既存レコードはUPDATE／未存在ならINSERTを行います)
+        /// </summary>
+        /// <param name="records">挿入または更新するレコード（複数件）</param>
+        /// <param name="insertTargetColumns">insert実行時の値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2, t.Col3 }</c>」</param>
+        /// <param name="updateTargetColumns">update実行時の値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col2, t.Col3 }</c>」</param>
+        /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
+        /// <returns>「merge into TABLE using ... when matched then update ... when not matched then insert ...」などのUpsert静的SQL。一度に挿入更新する行数がMultiInsertRowsPerQueryを超過しないよう分割して返されます</returns>
+        /// <remarks>サブクラスによりオーバーライドされ、DBMSに応じたSQL文が生成されます。基底クラスではSQL2003に準じたmerge文を生成します。</remarks>
+        public virtual IEnumerable<string> BuildMultiUpsert<T>(IEnumerable<T> records, Expression<Func<T, dynamic>> insertTargetColumns = null, Expression<Func<T, dynamic>> updateTargetColumns = null)
+        {
+            var tableInfo = GetTableInfo<T>();
+            // values生成対象カラム（insert対象カラムのうちSQLリテラルによる初期化を行わないカラム）を把握
+            var valuesColumns = (insertTargetColumns == null
+                ? tableInfo.Columns.Where(c => c.Insert && string.IsNullOrEmpty(c.InsertSQL))
+                : tableInfo.GetColumns(ExpressionHelper.GetMemberNames(insertTargetColumns.Body))).ToArray();
+            // 条件式部分を把握
+            var postfix = BuildUpsertCond(insertTargetColumns, updateTargetColumns);
+            // DBMSに応じたusing句を（適切なレコード件数毎に分割して）取り出し、merge分として完成
+            foreach (var usingClause in BuildMultiUpsertUsingClause(records, valuesColumns))
+            {
+                yield return "merge into " + tableInfo.Name + " as t "
+                    + usingClause
+                    + postfix;
+            }
+        }
+        /// <summary>
+        /// 一括Upsert(merge)のusing句を生成します。
+        /// </summary>
+        /// <param name="records">挿入または更新するレコード（複数件）</param>
+        /// <param name="columns">recordsから挿入時の値を取り出すべきカラム</param>
+        /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
+        /// <returns>「using(values (...), (...), ... ) as s(カラム名, ...)」などといった静的using句</returns>
+        /// <remarks>サブクラスによりオーバーライドされ、DBMSに応じたusing句が返されます。（ソーステーブルは別名sとすること）</remarks>
+        protected virtual IEnumerable<string> BuildMultiUpsertUsingClause<T>(IEnumerable<T> records, IReadOnlyList<TableInfo.Column> columns)
+        {
+            var postfix = Environment.NewLine + ") as s(" + string.Join(",", columns.Select(c => c.Name)) + ")";
+
+            var sb = new StringBuilder();
+            var rowCount = 0;
+
+            foreach (var record in records)
+            {
+                sb.AppendLine(sb.Length == 0
+                    ? "using(values"
+                    : ",");
+                var values = string.Join(",", columns.Select(
+                    column => ToSqlLiteral(MemberAccessor.GetValue(record, column.PropertyInfo))
+                    ));
+                sb.Append("(" + values + ")");
+                rowCount++;
+                if (rowCount >= MultiInsertRowsPerQuery)
+                {
+                    yield return sb.ToString() + postfix;
+                    sb.Clear();
+                    rowCount = 0;
+                }
+            }
+            if (sb.Length > 0)
+            {
+                yield return sb.ToString() + postfix;
+            }
+        }
+        /// <summary>
+        /// Upsert用SQL内の条件部分設定内容を生成します。
+        /// </summary>
+        /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
+        /// <param name="insertTargetColumns">insert実行時の値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2, t.Col3 }</c>」</param>
+        /// <param name="updateTargetColumns">update実行時の値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col2, t.Col3 }</c>」</param>
+        /// <returns>「on (t.KEY = s.KEY) when matched then update ... when not matched then insert ...」などといったSQL</returns>
+        protected string BuildUpsertCond<T>(Expression<Func<T, dynamic>> insertTargetColumns, Expression<Func<T, dynamic>> updateTargetColumns)
+        {
+            var tableInfo = GetTableInfo<T>();
+            var columns = (insertTargetColumns == null
+                ? tableInfo.Columns.Where(c => c.Insert)
+                : tableInfo.GetColumns(ExpressionHelper.GetMemberNames(insertTargetColumns.Body))).ToArray();
+
+            // on以降の定型部分を組み立てる
+            var sb = new StringBuilder();
+            sb.Append(" on (")
+                .Append(string.Join(" and ", tableInfo.Columns.Where(c => c.IsKey).Select(c => ("t." + c.Name + "=s." + c.Name))))
+                .AppendLine(")");
+            sb.Append(" when matched then")
+                .Append(BuildUpsertUpdateClause(" update set", "s.?", updateTargetColumns));
+            sb.Append(" when not matched then")
+                .Append(" insert(")
+                .Append(string.Join(",", columns.Select(c => c.Name)))
+                .Append(") values(")
+                .Append(string.Join(",", columns.Select(column =>
+                    (insertTargetColumns != null || string.IsNullOrWhiteSpace(column.InsertSQL))
+                        ? "s." + column.Name
+                        : column.InsertSQL
+                    )))
+                .Append(")");
+            return sb.ToString();
+        }
+        /// <summary>
+        /// Upsert用SQL内のupdate句設定内容を生成します。
+        /// </summary>
+        /// <param name="beginning">「do update set」などupdate句の冒頭に設定する内容</param>
+        /// <param name="columnValueTemplate">更新値設定構文のテンプレート。カラム名を埋め込む場所に半角ハテナ「?」を設定する</param>
+        /// <param name="updateTargetColumns">update実行時の値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col2, t.Col3 }</c>」</param>
+        /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
+        /// <returns>「～update set カラム=設定値, ...」といったSQL</returns>
+        /// <remarks>
+        /// beginning/columnValueTemplateにはDBMSに応じた適切な内容を設定すること。
+        /// 具体的には、Postgres/SQLiteの場合「on conflict(KEY) do update set」「excluded.?」、MySQLの場合「on duplicate key update」「values(?)」、Oracle/SqlServer/DB2の場合「～ update set」「excluded.?」
+        /// </remarks>
+        protected string BuildUpsertUpdateClause<T>(string beginning, string columnValueTemplate, Expression<Func<T, dynamic>> updateTargetColumns)
+        {
+            var tableInfo = GetTableInfo<T>();
+            var updateColumns = (updateTargetColumns == null)
+                ? tableInfo.Columns.Where(c => c.Update)
+                : tableInfo.GetColumns(ExpressionHelper.GetMemberNames(updateTargetColumns.Body));
+            var sb = new StringBuilder();
+            foreach (var column in updateColumns)
+            {
+                sb.Append(
+                    (sb.Length == 0)
+                    ? beginning
+                    : ",");
+                sb.Append(" ")
+                    .Append(column.Name)
+                    .Append("=")
+                    .Append(updateTargetColumns != null || string.IsNullOrWhiteSpace(column.UpdateSQL)
+                        ? columnValueTemplate.Replace("?", column.Name)
+                        : column.UpdateSQL);
+            }
+            return sb.ToString();
         }
 
         /// <summary>
@@ -603,10 +780,7 @@ namespace DapperAid
                 var methodCallExpr = ExpressionHelper.CastTo<MethodCallExpression>(expression);
                 if (methodCallExpr != null && methodCallExpr.Method != null && methodCallExpr.Method.DeclaringType == typeof(ToSql))
                 {
-                    // ※C#6.0以降でないとnameofが利用できないため定数定義
-                    const string NameofEval = "Eval"; //nameof(ToSql.Eval);
-
-                    if (methodCallExpr.Method.Name == NameofEval)
+                    if (methodCallExpr.Method.Name == ToSql.NameOf.Eval)
                     {   // ToSql.Eval(string)：指定されたSQL文字列を直接埋め込む
                         var argumentExpression = methodCallExpr.Arguments[0];
                         if (argumentExpression.Type == typeof(string))
@@ -695,17 +869,12 @@ namespace DapperAid
                 var method = (valueExpression as MethodCallExpression).Method;
                 if (method.DeclaringType == typeof(ToSql))
                 {
-                    // ※C#6.0以降でないとnameofが利用できないため定数定義とする
-                    const string NameofLike = "Like"; //nameof(ToSql.Like);
-                    const string NameofIn = "In"; //nameof(ToSql.In);
-                    const string NameofBetween = "Between"; //nameof(ToSql.Between);
-
-                    if (method.Name == NameofLike)
+                    if (method.Name == ToSql.NameOf.Like)
                     {   // ToSql.Like(string)：比較演算子をLike演算子とする
                         op = (opIsNot ? " not" : "") + " like ";
                         valueExpression = (valueExpression as MethodCallExpression).Arguments[0];
                     }
-                    else if (method.Name == NameofIn)
+                    else if (method.Name == ToSql.NameOf.In)
                     {
                         valueExpression = (valueExpression as MethodCallExpression).Arguments[0];
                         if (valueExpression.Type == typeof(string))
@@ -717,7 +886,7 @@ namespace DapperAid
                             return BuildWhereIn(parameters, condColumn, opIsNot, ExpressionHelper.EvaluateValue(valueExpression));
                         }
                     }
-                    else if (method.Name == NameofBetween)
+                    else if (method.Name == ToSql.NameOf.Between)
                     {    // ToSql.Between(値1, 値2)： Between演算子を組み立て、パラメータを２つバインドする。nullの可能性は考慮しない
                         var value1 = ExpressionHelper.EvaluateValue((valueExpression as MethodCallExpression).Arguments[0]);
                         var value2 = ExpressionHelper.EvaluateValue((valueExpression as MethodCallExpression).Arguments[1]);

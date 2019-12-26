@@ -17,6 +17,13 @@ namespace DapperAid
                 set { }
             }
 
+            /// <summary>MSAccessではUpsertに対応していないためfalse固定となります。</summary>
+            public override bool SupportsUpsert
+            {
+                get { return false; }
+                set { }
+            }
+
             /// <summary>SQL識別子（テーブル名/カラム名等）をエスケープします。MsAccessでは"[","]"を使用します。</summary>
             public override string EscapeIdentifier(string identifier)
             {

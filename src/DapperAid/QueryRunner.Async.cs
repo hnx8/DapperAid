@@ -47,17 +47,17 @@ namespace DapperAid
         /// </summary>
         /// <param name="where">レコード絞り込み条件（絞り込みを行わず全件対象とする場合はnull）</param>
         /// <param name="targetColumns">値取得対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
-        /// <param name="otherClauses">SQL文のwhere条件より後ろに付加するorderBy条件/limit/offset指定などがあれば、その内容</param>
+        /// <param name="otherClauses">SQL文の末尾に付加するorderBy条件/limit/offset/forUpdate指定などがあれば、その内容</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>レコードのリスト</returns>
-        public Task<IReadOnlyList<T>> SelectAsync<T>(Expression<Func<T, bool>> where = null, Expression<Func<T, dynamic>> targetColumns = null, string otherClauses = null)
+        public async Task<IReadOnlyList<T>> SelectAsync<T>(Expression<Func<T, bool>> where = null, Expression<Func<T, dynamic>> targetColumns = null, string otherClauses = null)
         {
             var parameters = new DynamicParameters();
             var sql = this.Builder.BuildSelect(targetColumns)
                 + this.Builder.BuildWhere(parameters, where)
                 + this.Builder.BuildSelectOrderByEtc(targetColumns, otherClauses);
-            var result = this.Connection.QueryAsync<T>(sql, parameters, this.Transaction, this.Timeout);
-            return result as Task<IReadOnlyList<T>>;
+            var result = await this.Connection.QueryAsync<T>(sql, parameters, this.Transaction, this.Timeout);
+            return result as IReadOnlyList<T>;
         }
 
 
@@ -99,19 +99,45 @@ namespace DapperAid
         /// </remarks>
         public Task<int> InsertAndRetrieveIdAsync<T>(T data, Expression<Func<T, dynamic>> targetColumns = null)
         {
-            return Task<int>.Run(() => this.InsertAndRetrieveId(data, targetColumns));
+            return Task.Run(() => this.InsertAndRetrieveId(data, targetColumns));
         }
 
         /// <summary>
         /// 指定されたレコードを非同期で一括挿入します。
         /// </summary>
-        /// <param name="data">挿入するレコード（複数件）</param>
+        /// <param name="records">挿入するレコード（複数件）</param>
         /// <param name="targetColumns">値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>挿入された行数</returns>
-        public Task<int> InsertRowsAsync<T>(IEnumerable<T> data, Expression<Func<T, dynamic>> targetColumns = null)
+        public Task<int> InsertRowsAsync<T>(IEnumerable<T> records, Expression<Func<T, dynamic>> targetColumns = null)
         {
-            return Task<int>.Run(() => this.InsertRows(data, targetColumns));
+            return Task.Run(() => this.InsertRows(records, targetColumns));
+        }
+
+        /// <summary>
+        /// 指定されたレコードを非同期で挿入または更新します。(既存レコードはUPDATE／未存在ならINSERTを行います)
+        /// </summary>
+        /// <param name="data">挿入または更新するレコード</param>
+        /// <param name="insertTargetColumns">insert実行時の値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2, t.Col3 }</c>」</param>
+        /// <param name="updateTargetColumns">update実行時の値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col2, t.Col3 }</c>」</param>
+        /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
+        /// <returns>挿入または更新された行数</returns>
+        public Task<int> InsertOrUpdateAsync<T>(T data, Expression<Func<T, dynamic>> insertTargetColumns = null, Expression<Func<T, dynamic>> updateTargetColumns = null)
+        {
+            return Task.Run(() => this.InsertOrUpdate(data, insertTargetColumns, updateTargetColumns));
+        }
+
+        /// <summary>
+        /// 指定されたレコードを非同期で一括挿入または更新します。(既存レコードはUPDATE／未存在ならINSERTを行います)
+        /// </summary>
+        /// <param name="records">挿入または更新するレコード（複数件）</param>
+        /// <param name="insertTargetColumns">insert実行時の値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2, t.Col3 }</c>」</param>
+        /// <param name="updateTargetColumns">update実行時の値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col2, t.Col3 }</c>」</param>
+        /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
+        /// <returns>挿入または更新された行数</returns>
+        public Task<int> InsertOrUpdateRowsAsync<T>(IEnumerable<T> records, Expression<Func<T, dynamic>> insertTargetColumns = null, Expression<Func<T, dynamic>> updateTargetColumns = null)
+        {
+            return Task.Run(() => this.InsertOrUpdateRows(records, insertTargetColumns, updateTargetColumns));
         }
 
 

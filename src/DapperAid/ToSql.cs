@@ -72,5 +72,18 @@ namespace DapperAid
         {
             throw new InvalidOperationException("It can be used only for DapperAid's where-condition");
         }
+
+        /// <summary>
+        /// メソッド名定数定義
+        /// </summary>
+        internal class NameOf
+        {
+            // C#6.0未満の環境だとnameofが使用できないため、代替としてメソッド名を定数で定義しておく
+
+            public const string Like = "Like";
+            public const string Between = "Between";
+            public const string In = "In";
+            public const string Eval = "Eval";
+        }
     }
 }

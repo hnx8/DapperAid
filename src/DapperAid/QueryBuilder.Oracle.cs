@@ -43,42 +43,88 @@ namespace DapperAid
                 var columns = (targetColumns == null
                     ? tableInfo.Columns.Where(c => c.Insert)
                     : tableInfo.GetColumns(ExpressionHelper.GetMemberNames(targetColumns.Body))).ToArray();
-                var names = new StringBuilder();
-                foreach (var column in columns)
-                {
-                    if (names.Length > 0) { names.Append(", "); }
-                    names.Append(column.Name);
-                }
+                var columnNames = string.Join(", ", columns.Select(c => c.Name));
 
-                var data = new StringBuilder();
-                var count = 0;
+                var sb = new StringBuilder();
+                var rowCount = 0;
                 foreach (var record in records)
                 {
-                    var values = new StringBuilder();
-                    foreach (var column in columns)
-                    {
-                        values.Append(values.Length == 0 ? "(" : ", ");
-                        values.Append(targetColumns != null || string.IsNullOrWhiteSpace(column.InsertSQL)
+                    var values = string.Join(", ", columns.Select(column =>
+                        (targetColumns != null || string.IsNullOrWhiteSpace(column.InsertSQL))
                             ? ToSqlLiteral(MemberAccessor.GetValue(record, column.PropertyInfo))
-                            : column.InsertSQL);
-                    }
-                    values.Append(")");
+                            : column.InsertSQL)
+                        );
 
-                    if (data.Length == 0)
+                    if (sb.Length == 0)
                     {
-                        data.AppendLine("insert all");
+                        sb.AppendLine("insert all");
                     }
-                    data.AppendLine(" into " + tableInfo.Name + "(" + names.ToString() + ") values" + values.ToString());
-                    if (count >= MultiInsertRowsPerQuery)
+                    sb.AppendLine(" into " + tableInfo.Name + "(" + columnNames + ") values" + "(" + values + ")");
+                    rowCount++;
+                    if (rowCount >= MultiInsertRowsPerQuery)
                     {
-                        yield return data.ToString() + " select null from dual";
-                        data.Clear();
-                        count = 0;
+                        yield return sb.ToString() + " select null from dual";
+                        sb.Clear();
+                        rowCount = 0;
                     }
                 }
-                if (data.Length > 0)
+                if (sb.Length > 0)
                 {
-                    yield return data.ToString() + " select null from dual";
+                    yield return sb.ToString() + " select null from dual";
+                }
+            }
+
+            /// <summary>
+            /// 一括Upsert(merge)のusing句を生成します。
+            /// </summary>
+            /// <param name="columns">recordsから挿入時の値を取り出すべきカラム</param>
+            /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
+            /// <returns>Oracleでは「using (select @パラメータ名 as カラム名, ... from dual) as s」のようなusing句</returns>
+            protected override string BuildUpsertUsingClause<T>(IReadOnlyList<TableInfo.Column> columns)
+            {
+                return "using("
+                    + Environment.NewLine
+                    + "select "
+                    + string.Join(",", columns.Select(column => (ParameterMarker + column.PropertyInfo.Name + " as " + column.Name)))
+                    + " from dual"
+                    + Environment.NewLine
+                    + ") as s";
+            }
+            /// <summary>
+            /// 一括Upsert(merge)のusing句を生成します。
+            /// </summary>
+            /// <param name="records">挿入または更新するレコード（複数件）</param>
+            /// <param name="columns">recordsから挿入時の値を取り出すべきカラム</param>
+            /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
+            /// <returns>Oracleでは「using (select 値 from dual union select ....) as s」のような静的using句</returns>
+            protected override IEnumerable<string> BuildMultiUpsertUsingClause<T>(IEnumerable<T> records, IReadOnlyList<TableInfo.Column> columns)
+            {
+                var postfix = ") as s";
+
+                var sb = new StringBuilder();
+                var rowCount = 0;
+
+                foreach (var record in records)
+                {
+                    sb.Append(sb.Length == 0
+                        ? "using (" + Environment.NewLine + " select "
+                        : " union all select ");
+                    var values = string.Join(",", columns.Select(
+                        column => ToSqlLiteral(MemberAccessor.GetValue(record, column.PropertyInfo))
+                                    + (rowCount == 0 ? " as " + column.Name : "") // 先頭行に限り列名も付与する
+                        ));
+                    sb.AppendLine(values + " from dual ");
+                    rowCount++;
+                    if (rowCount >= MultiInsertRowsPerQuery)
+                    {
+                        yield return sb.ToString() + postfix;
+                        sb.Clear();
+                        rowCount = 0;
+                    }
+                }
+                if (sb.Length > 0)
+                {
+                    yield return sb.ToString() + postfix;
                 }
             }
 

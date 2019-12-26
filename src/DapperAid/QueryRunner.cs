@@ -85,7 +85,7 @@ namespace DapperAid
         /// <param name="targetColumns">値取得対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
         /// <param name="otherClauses">SQL文の末尾に付加するforUpdate指定などがあれば、その内容</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
-        /// <returns>取得したレコード</returns>
+        /// <returns>取得したレコード（１件、レコード不存在の場合はnull）</returns>
         public T Select<T>(Expression<Func<T>> keyValues, Expression<Func<T, dynamic>> targetColumns = null, string otherClauses = null)
         {
             var parameters = new DynamicParameters();
@@ -100,7 +100,7 @@ namespace DapperAid
         /// </summary>
         /// <param name="where">レコード絞り込み条件（絞り込みを行わず全件対象とする場合はnull）</param>
         /// <param name="targetColumns">値取得対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
-        /// <param name="otherClauses">SQL文の末尾に付加するorderBy条件/limit/offset指定などがあれば、その内容</param>
+        /// <param name="otherClauses">SQL文の末尾に付加するorderBy条件/limit/offset/forUpdate指定などがあれば、その内容</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>レコードのリスト</returns>
         public IReadOnlyList<T> Select<T>(Expression<Func<T, bool>> where = null, Expression<Func<T, dynamic>> targetColumns = null, string otherClauses = null)
@@ -146,7 +146,7 @@ namespace DapperAid
         /// <param name="data">挿入するレコード</param>
         /// <param name="targetColumns">値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
-        /// <returns>挿入された行数(=1件)</returns>
+        /// <returns>挿入された行数</returns>
         /// <remarks>
         /// 自動連番に対応していないテーブル/DBMSでは例外がスローされます。
         /// </remarks>
@@ -184,16 +184,82 @@ namespace DapperAid
         /// <summary>
         /// 指定されたレコードを一括挿入します。
         /// </summary>
-        /// <param name="data">挿入するレコード（複数件）</param>
+        /// <param name="records">挿入するレコード（複数件）</param>
         /// <param name="targetColumns">値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>挿入された行数</returns>
-        public int InsertRows<T>(IEnumerable<T> data, Expression<Func<T, dynamic>> targetColumns = null)
+        public int InsertRows<T>(IEnumerable<T> records, Expression<Func<T, dynamic>> targetColumns = null)
         {
             var ret = 0;
-            foreach (var sql in this.Builder.BuildMultiInsert(data, targetColumns))
+            foreach (var sql in this.Builder.BuildMultiInsert(records, targetColumns))
             {
                 ret += this.Connection.Execute(sql, null, this.Transaction, this.Timeout);
+            }
+            return ret;
+        }
+
+        /// <summary>
+        /// 指定されたレコードを挿入または更新します。(既存レコードはUPDATE／未存在ならINSERTを行います)
+        /// </summary>
+        /// <param name="data">挿入または更新するレコード</param>
+        /// <param name="insertTargetColumns">insert実行時の値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2, t.Col3 }</c>」</param>
+        /// <param name="updateTargetColumns">update実行時の値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col2, t.Col3 }</c>」</param>
+        /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
+        /// <returns>挿入または更新された行数</returns>
+        public int InsertOrUpdate<T>(T data, Expression<Func<T, dynamic>> insertTargetColumns = null, Expression<Func<T, dynamic>> updateTargetColumns = null)
+        {
+            if (!this.Builder.SupportsUpsert)
+            {
+                return UpdateOrInsertOnebyone(new T[] { data }, insertTargetColumns, updateTargetColumns);
+            }
+
+            var sql = this.Builder.BuildUpsert(insertTargetColumns, updateTargetColumns);
+            return this.Connection.Execute(sql, data, this.Transaction, this.Timeout);
+        }
+
+        /// <summary>
+        /// 指定されたレコードを一括挿入または更新します。(既存レコードはUPDATE／未存在ならINSERTを行います)
+        /// </summary>
+        /// <param name="records">挿入または更新するレコード（複数件）</param>
+        /// <param name="insertTargetColumns">insert実行時の値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2, t.Col3 }</c>」</param>
+        /// <param name="updateTargetColumns">update実行時の値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col2, t.Col3 }</c>」</param>
+        /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
+        /// <returns>挿入または更新された行数</returns>
+        public int InsertOrUpdateRows<T>(IEnumerable<T> records, Expression<Func<T, dynamic>> insertTargetColumns = null, Expression<Func<T, dynamic>> updateTargetColumns = null)
+        {
+            if (!this.Builder.SupportsUpsert)
+            {   // Upsert未対応の場合は１レコードずつ処理実行
+                return UpdateOrInsertOnebyone(records, insertTargetColumns, updateTargetColumns);
+            }
+
+            var ret = 0;
+            foreach (var sql in this.Builder.BuildMultiUpsert(records, insertTargetColumns, updateTargetColumns))
+            {
+                ret += this.Connection.Execute(sql, null, this.Transaction, this.Timeout);
+            }
+            return ret;
+        }
+
+        /// <summary>
+        /// Upsert未対応DBMS向けに、指定されたレコードを一括挿入または更新します（既存レコードのUPDATEを試み、未存在だった場合にはINSERTを行います）
+        /// </summary>
+        /// <param name="records">挿入または更新するレコード（複数件）</param>
+        /// <param name="insertTargetColumns">insert実行時の値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2, t.Col3 }</c>」</param>
+        /// <param name="updateTargetColumns">update実行時の値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col2, t.Col3 }</c>」</param>
+        /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
+        /// <returns>挿入または更新された行数</returns>
+        /// <remarks>１レコードずつSQLを実行するため低速です。</remarks>
+        protected int UpdateOrInsertOnebyone<T>(IEnumerable<T> records, Expression<Func<T, dynamic>> insertTargetColumns = null, Expression<Func<T, dynamic>> updateTargetColumns = null)
+        {
+            var insertSql = this.Builder.BuildInsert<T>(insertTargetColumns);
+            var updateSql = this.Builder.BuildUpdate<T>(updateTargetColumns) + this.Builder.BuildWhere<T>(default(T), c => (c.IsKey));
+            var ret = 0;
+            foreach (var record in records)
+            {
+                var updated = this.Connection.Execute(updateSql, record, this.Transaction, this.Timeout);
+                ret += (updated > 0)
+                    ? updated
+                    : this.Connection.Execute(insertSql, record, this.Transaction, this.Timeout);
             }
             return ret;
         }

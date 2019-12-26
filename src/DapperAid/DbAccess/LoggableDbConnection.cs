@@ -17,7 +17,7 @@ namespace DapperAid.DbAccess
         #region プロパティ -----------------------------------------------------
 
         /// <summary>ラップしている生のDbConnection</summary>
-        internal DbConnection _innerConnection { get; private set; }
+        private readonly DbConnection _innerConnection;
 
         /// <summary>エラーログ出力メソッド：引数＝例外オブジェクト, 実行したDbCommand(DbCommandではない場合はnull)</summary>
         public Action<Exception, DbCommand> ErrorLogger { get; set; }
@@ -140,7 +140,7 @@ namespace DapperAid.DbAccess
         {
             get { return _innerConnection.ConnectionTimeout; }
         }
-        public override event System.Data.StateChangeEventHandler StateChange
+        public override event StateChangeEventHandler StateChange
         {
             add { _innerConnection.StateChange += value; }
             remove { _innerConnection.StateChange -= value; }
@@ -150,19 +150,19 @@ namespace DapperAid.DbAccess
         {
             _innerConnection.EnlistTransaction(transaction);
         }
-        public override System.Data.DataTable GetSchema()
+        public override DataTable GetSchema()
         {
             return _innerConnection.GetSchema();
         }
-        public override System.Data.DataTable GetSchema(string collectionName)
+        public override DataTable GetSchema(string collectionName)
         {
             return _innerConnection.GetSchema(collectionName);
         }
-        public override System.Data.DataTable GetSchema(string collectionName, string[] restrictionValues)
+        public override DataTable GetSchema(string collectionName, string[] restrictionValues)
         {
             return _innerConnection.GetSchema(collectionName, restrictionValues);
         }
-        //protected override void OnStateChange(System.Data.StateChangeEventArgs stateChange)
+        //protected override void OnStateChange(StateChangeEventArgs stateChange)
         //{   
         //    _innerConnection.OnStateChange(stateChange);
         //} // ※StateChangeイベントの発火はinnerConnection側に任せるためオーバーライド不要
@@ -181,7 +181,8 @@ namespace DapperAid.DbAccess
             private readonly LoggableDbConnection _conn;
 
             /// <summary>ラップしている生のDbTransaction</summary>
-            internal readonly DbTransaction _innerTransaction;
+            private readonly DbTransaction _innerTransaction;
+            internal DbTransaction InnerTransaction { get { return _innerTransaction; } }
 
             /// <summary>トランザクションが終了しているか否か</summary>
             private bool _isCompleted = false;
@@ -200,7 +201,7 @@ namespace DapperAid.DbAccess
             {
                 get { return _conn; }
             }
-            public override System.Data.IsolationLevel IsolationLevel { get { return _innerTransaction.IsolationLevel; } }
+            public override IsolationLevel IsolationLevel { get { return _innerTransaction.IsolationLevel; } }
 
             /// <summary>
             /// コミットし、トレースログを出力します。
@@ -310,7 +311,7 @@ namespace DapperAid.DbAccess
                 {   // ラップされているDbTransactionが引き渡された場合は、生のDbCommandにはラップされていないDbTransactionを設定する
                     _tran = value;
                     var wrapped = (value as Transaction);
-                    _innerCommand.Transaction = (wrapped != null) ? wrapped._innerTransaction : value;
+                    _innerCommand.Transaction = (wrapped != null) ? wrapped.InnerTransaction : value;
                 }
             }
 

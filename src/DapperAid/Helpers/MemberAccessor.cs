@@ -11,9 +11,9 @@ namespace DapperAid.Helpers
     public static class MemberAccessor
     {
         /// <summary>Getterのキャッシュ</summary>
-        private static ConcurrentDictionary<MemberInfo, Delegate> getters = new ConcurrentDictionary<MemberInfo, Delegate>();
+        private static readonly ConcurrentDictionary<MemberInfo, Delegate> getters = new ConcurrentDictionary<MemberInfo, Delegate>();
         /// <summary>Setterのキャッシュ</summary>
-        private static ConcurrentDictionary<MemberInfo, Delegate> setters = new ConcurrentDictionary<MemberInfo, Delegate>();
+        private static readonly ConcurrentDictionary<MemberInfo, Delegate> setters = new ConcurrentDictionary<MemberInfo, Delegate>();
 
         // ---------------------------------------------------------------------
 

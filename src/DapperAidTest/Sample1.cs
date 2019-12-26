@@ -5,6 +5,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 using System.Data;
 using System.Data.SQLite;
 using System.Diagnostics;
+using System.Threading;
 using Dapper;
 using DapperAid;
 using DapperAid.DataAnnotations;
@@ -41,7 +42,7 @@ namespace DapperAidTest
             public DateTime? CreatedAt { get; set; }
 
             [InsertSql("CURRENT_TIMESTAMP"), UpdateSql("CURRENT_TIMESTAMP"), ConcurrencyCheck]
-            public DateTime? UpdatedAt { get; private set; } = DateTime.Now;
+            public DateTime? UpdatedAt { get; private set; }
 
             [NotMapped]
             public string TemporaryPassword { get; set; }
@@ -112,12 +113,12 @@ namespace DapperAidTest
                 // (for update etc.)
                 Member selectForUpdate = connection.Select(
                     () => new Member { Id = 7 },
-                    otherClauses: "--FOR UPDATE"); // SQLite doesnot support "FOR UPDATE", so commented out 
+                    otherClauses: "--FOR UPDATE"); // SQLite doesn't support "FOR UPDATE", so commented out 
 
                 var targetMember = new Member { Id = 8, Name = "LockTest" };
                 var lockedMember = connection.Select(
                     () => targetMember, // where [Key] or [ConcurrencyCheck] is set
-                    otherClauses: "--FOR UPDATE"); // SQLite doesnot support "FOR UPDATE", so commented out 
+                    otherClauses: "--FOR UPDATE"); // SQLite doesn't support "FOR UPDATE", so commented out 
 
 
                 // select records --------------------
@@ -210,6 +211,94 @@ namespace DapperAidTest
                     || r.Name == ToSql.Between("1", "5")
                     || DateTime.Now < r.CreatedAt));
 
+            }
+        }
+
+        /// <summary>
+        /// Sample Table #2
+        /// </summary>
+        [SelectSql(DefaultOtherClauses = "order by Code")]
+        class Dept
+        {
+            [Key]
+            public int Code { get; set; }
+
+            public string Name { get; set; }
+
+            [InsertSql("CURRENT_TIMESTAMP"), UpdateSql(false)]
+            public DateTime? CreatedAt { get; set; }
+
+            [InsertSql(false), UpdateSql("CURRENT_TIMESTAMP")]
+            public DateTime? UpdatedAt { get; private set; }
+
+            public override string ToString()
+            {
+                return Code.ToString() + ":" + Name + "(" + CreatedAt?.ToString("G") + " -> " + UpdatedAt?.ToString("G") + ")";
+            }
+        }
+
+        /// <summary>
+        /// Upsert Sample
+        /// </summary>
+        [TestMethod]
+        public void UpsertTest()
+        {
+            QueryBuilder.DefaultInstance = new QueryBuilder.SQLite()
+            {
+                MultiInsertRowsPerQuery = 2
+            };
+
+            using (IDbConnection connection = GetSqliteDbConnection())
+            {
+                var createTableSql = DDLAttribute.GenerateCreateSQL<Dept>();
+                connection.Execute(createTableSql);
+
+                // insert records -------------------
+                var insertData = new[] {
+                    new Dept { Code = 110, Name = "Business"},
+                    new Dept { Code = 210, Name = "Accounting"},
+                    new Dept { Code = 220, Name = "Finance"},
+                    new Dept { Code = 230, Name = "Purchasing"},
+                };
+                int insertMulti = connection.InsertRows(insertData);
+
+                var inserted = connection.Select<Dept>();
+                Assert.AreEqual(4, inserted.Count);
+                foreach (var rec in inserted) { Trace.WriteLine(rec.ToString()); }
+
+                // upsert records -------------------
+                Thread.Sleep(1000);
+                var upsertRow = new Dept { Code = 230, Name = "Buying" };
+                int upsertSingle = connection.InsertOrUpdate(upsertRow);
+                Thread.Sleep(1000);
+
+                var upsertData = new[] {
+                    new Dept { Code = 110, Name = "Sales"},
+                    new Dept { Code = 120, Name = "Marketing"},
+                    new Dept { Code = 130, Name = "Publicity"},
+                };
+                int upsertMulti = connection.InsertOrUpdateRows(upsertData);
+
+                var upserted = connection.Select<Dept>(); // returns 6 rows (1 rows updated, 2 rows inserted)
+                Assert.AreEqual(6, upserted.Count);
+                foreach (var rec in upserted) { Trace.WriteLine(rec.ToString()); }
+
+                // SQL generation according to the dialect of each DBMS -------------------
+                Trace.WriteLine("<Oracle>");
+                var oracleBuilder = new QueryBuilder.Oracle() { MultiInsertRowsPerQuery = 2 };
+                foreach (var sql in oracleBuilder.BuildMultiInsert(insertData)) { Trace.WriteLine(sql); }
+                Trace.WriteLine(oracleBuilder.BuildUpsert<Dept>());
+                foreach (var sql in oracleBuilder.BuildMultiUpsert(upsertData)) { Trace.WriteLine(sql); }
+
+                Trace.WriteLine("<SqlServer>");
+                var mssqlBuilder = new QueryBuilder.SqlServer() { MultiInsertRowsPerQuery = 2 };
+                Trace.WriteLine(mssqlBuilder.BuildUpsert<Dept>());
+                foreach (var sql in mssqlBuilder.BuildMultiUpsert(upsertData)) { Trace.WriteLine(sql); }
+
+                Trace.WriteLine("<MySql>");
+                var mysqlBuilder = new QueryBuilder.MySql() { MultiInsertRowsPerQuery = 2 };
+                Trace.WriteLine(mysqlBuilder.BuildUpsert<Dept>());
+                foreach (var sql in mysqlBuilder.BuildMultiUpsert(upsertData)) { Trace.WriteLine(sql); }
             }
         }
     }
