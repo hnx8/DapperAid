@@ -13,6 +13,12 @@ namespace DapperAid
         /// </summary>
         public class Postgres : QueryBuilder
         {
+            /// <summary>Postgres/SQLiteにおけるTRUEを表すSQLリテラル表記です。</summary>
+            public override string TrueLiteral { get { return "1"; } }
+
+            /// <summary>Postgres/SQLiteにおけるFalseを表すSQLリテラル表記です。</summary>
+            public override string FalseLiteral { get { return "0"; } }
+
             /// <summary>自動連番値を取得するSQL句として、returning句を付加します。</summary>
             protected override string GetInsertedIdReturningSql<T>(TableInfo.Column column)
             {
