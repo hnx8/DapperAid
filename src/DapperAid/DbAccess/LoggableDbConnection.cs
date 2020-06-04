@@ -2,6 +2,7 @@
 using System.Data;
 using System.Data.Common;
 using System.Diagnostics;
+using System.Threading.Tasks;
 
 namespace DapperAid.DbAccess
 {
@@ -68,6 +69,34 @@ namespace DapperAid.DbAccess
 
         #region ログ出力機能追加のためのオーバーライド -------------------------
 
+        /// <summary>データベース接続を開きます。</summary>
+        public override void Open()
+        {
+            try
+            {
+                _innerConnection.Open();
+            }
+            catch (Exception ex)
+            {   // エラーログを出力し、スタックトレースを切って再throw
+                this.ErrorLog(ex);
+                throw ex;
+            }
+        }
+
+        /// <summary>非同期でデータベース接続を開きます。</summary>
+        public override async Task OpenAsync(System.Threading.CancellationToken cancellationToken)
+        {
+            try
+            {
+                await this._innerConnection.OpenAsync(cancellationToken);
+            }
+            catch (Exception ex)
+            {   // エラーログを出力し、スタックトレースを切って再throw
+                this.ErrorLog(ex);
+                throw ex;
+            }
+        }
+
         /// <summary>
         /// ログ出力可能なDbTransactionオブジェクトを生成してトランザクションを開始し、トレースログを出力します。
         /// </summary>
@@ -129,10 +158,6 @@ namespace DapperAid.DbAccess
         {
             _innerConnection.Close();
         }
-        public override void Open()
-        {
-            _innerConnection.Open();
-        }
 
         // 以下、実装必須ではないが挙動のつじつまを合わせるために必要なプロパティ/メソッド
 
@@ -163,7 +188,7 @@ namespace DapperAid.DbAccess
             return _innerConnection.GetSchema(collectionName, restrictionValues);
         }
         //protected override void OnStateChange(StateChangeEventArgs stateChange)
-        //{   
+        //{
         //    _innerConnection.OnStateChange(stateChange);
         //} // ※StateChangeイベントの発火はinnerConnection側に任せるためオーバーライド不要
 
@@ -347,6 +372,25 @@ namespace DapperAid.DbAccess
             }
 
             /// <summary>
+            /// 非同期でコマンドを実行します。実行結果トレースログも出力します。
+            /// </summary>
+            protected override async Task<DbDataReader> ExecuteDbDataReaderAsync(CommandBehavior behavior, System.Threading.CancellationToken cancellationToken)
+            {
+                try
+                {
+                    var sw = Stopwatch.StartNew();
+                    var ret = await _innerCommand.ExecuteReaderAsync(behavior, cancellationToken);
+                    _conn.TraceLog((ret.HasRows ? "*HasResults" : "*NoResult"), sw.ElapsedMilliseconds, _innerCommand);
+                    return ret;
+                }
+                catch (Exception ex)
+                {   // エラーログを出力し、スタックトレースを切って再throw
+                    _conn.ErrorLog(ex, this);
+                    throw ex;
+                }
+            }
+
+            /// <summary>
             /// コマンドを実行します。実行結果トレースログも出力します。
             /// </summary>
             public override int ExecuteNonQuery()
@@ -366,6 +410,25 @@ namespace DapperAid.DbAccess
             }
 
             /// <summary>
+            /// 非同期でコマンドを実行します。実行結果トレースログも出力します。
+            /// </summary>
+            public override async Task<int> ExecuteNonQueryAsync(System.Threading.CancellationToken cancellationToken)
+            {
+                try
+                {
+                    var sw = Stopwatch.StartNew();
+                    var ret = await _innerCommand.ExecuteNonQueryAsync(cancellationToken);
+                    _conn.TraceLog("*Affected=" + ret.ToString(), sw.ElapsedMilliseconds, _innerCommand);
+                    return ret;
+                }
+                catch (Exception ex)
+                {   // エラーログを出力し、スタックトレースを切って再throw
+                    _conn.ErrorLog(ex, this);
+                    throw ex;
+                }
+            }
+
+            /// <summary>
             /// コマンドを実行します。実行結果トレースログも出力します。
             /// </summary>
             public override object ExecuteScalar()
@@ -375,6 +438,25 @@ namespace DapperAid.DbAccess
                     var sw = Stopwatch.StartNew();
                     var ret = _innerCommand.ExecuteScalar();
                     _conn.TraceLog("Value=" + (ret != null ? ret.ToString() : "null"), sw.ElapsedMilliseconds, _innerCommand);
+                    return ret;
+                }
+                catch (Exception ex)
+                {   // エラーログを出力し、スタックトレースを切って再throw
+                    _conn.ErrorLog(ex, this);
+                    throw ex;
+                }
+            }
+
+            /// <summary>
+            /// 非同期でコマンドを実行します。実行結果トレースログも出力します。
+            /// </summary>
+            public override async Task<object> ExecuteScalarAsync(System.Threading.CancellationToken cancellationToken)
+            {
+                try
+                {
+                    var sw = Stopwatch.StartNew();
+                    var ret = await _innerCommand.ExecuteScalarAsync(cancellationToken);
+                    _conn.TraceLog("*Value=" + (ret != null ? ret.ToString() : "null"), sw.ElapsedMilliseconds, _innerCommand);
                     return ret;
                 }
                 catch (Exception ex)

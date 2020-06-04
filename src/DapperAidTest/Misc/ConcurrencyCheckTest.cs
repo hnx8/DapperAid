@@ -35,7 +35,7 @@ namespace DapperAidTest.Misc
                 traceLogger: (text, mSec, cmd) =>
                 {
                     Trace.WriteLine(text + "(" + mSec + "ms)" + (cmd != null ? ":" + cmd.CommandText : null));
-                    if (cmd.Parameters?.Count > 0)
+                    if (cmd?.Parameters?.Count > 0)
                     {
                         for (int i = 0; i < cmd.Parameters.Count; i++)
                         {
