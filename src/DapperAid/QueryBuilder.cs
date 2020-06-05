@@ -243,7 +243,7 @@ namespace DapperAid
         {
             var tableInfo = GetTableInfo<T>();
             var columns = (targetColumns == null)
-                ? tableInfo.Columns
+                ? tableInfo.Columns.Where(c => c.Select)
                 : tableInfo.GetColumns(ExpressionHelper.GetMemberNames(targetColumns.Body));
             var sb = new StringBuilder();
             var delimiter = " ";
@@ -586,7 +586,7 @@ namespace DapperAid
         {
             var tableInfo = GetTableInfo<T>();
             var columns = (targetColumns == null)
-                ? tableInfo.Columns.Where(c => (c.Update))
+                ? tableInfo.Columns.Where(c => c.Update)
                 : tableInfo.GetColumns(ExpressionHelper.GetMemberNames(targetColumns.Body));
             var sb = new StringBuilder();
             foreach (var column in columns)

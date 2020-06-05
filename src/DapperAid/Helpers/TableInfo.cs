@@ -41,6 +41,8 @@ namespace DapperAid.Helpers
             /// <summary>SQL文で使用するカラム名（識別子エスケープ済）、あるいはSQL式</summary>
             public string Name { get; private set; }
 
+            /// <summary>レコードSelect時に値取得対象カラムとするか否か</summary>
+            public bool Select { get; private set; }
             /// <summary>Select時に使用するカラム別名（識別子エスケープ済）、別名設定なしの場合はnull</summary>
             public string Alias { get; private set; }
 
@@ -67,12 +69,15 @@ namespace DapperAid.Helpers
                 this.PropertyInfo = prop;
                 this.IsKey = (prop.GetCustomAttribute<KeyAttribute>() != null);
 
+                var isMapped = (prop.GetCustomAttribute<NotMappedAttribute>() == null);
+
                 var colAttr = prop.GetCustomAttribute<ColumnAttribute>();
                 this.Name = (colAttr == null || string.IsNullOrWhiteSpace(colAttr.Name)) ? escapeMethod(prop.Name) : colAttr.Name;
+                this.Select = isMapped;
                 this.Alias = (colAttr == null || string.IsNullOrWhiteSpace(colAttr.Name)) ? null : escapeMethod(prop.Name);
 
                 var insertAttr = prop.GetCustomAttribute<InsertSqlAttribute>();
-                this.Insert = (insertAttr == null) ? true : insertAttr.SetValue;
+                this.Insert = (insertAttr == null) ? isMapped : insertAttr.SetValue;
                 this.InsertSQL = (insertAttr == null || string.IsNullOrWhiteSpace(insertAttr.Sql)) ? null : insertAttr.Sql;
 
                 var concurrencyAttr = prop.GetCustomAttribute<ConcurrencyCheckAttribute>();
@@ -80,7 +85,7 @@ namespace DapperAid.Helpers
 
                 var updateAttr = prop.GetCustomAttribute<UpdateSqlAttribute>();
                 this.Update = (updateAttr == null)
-                    ? (!this.IsKey)
+                    ? (isMapped && !this.IsKey)
                     : updateAttr.SetValue;
                 this.UpdateSQL = (updateAttr == null || string.IsNullOrWhiteSpace(updateAttr.Sql)) ? null : updateAttr.Sql;
             }
@@ -102,8 +107,7 @@ namespace DapperAid.Helpers
                 + (tableAttr == null || string.IsNullOrWhiteSpace(tableAttr.Name) ? escapeMethod(tableType.Name) : tableAttr.Name);
             // 各列（自動連番カラムがあればそれも把握）
             var columns = new List<Column>();
-            var props = tableType.GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-                .Where(p => (p.GetCustomAttribute<NotMappedAttribute>() == null));
+            var props = tableType.GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
             foreach (var prop in props)
             {
                 var col = new Column(prop, escapeMethod);

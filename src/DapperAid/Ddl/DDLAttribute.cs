@@ -52,7 +52,7 @@ namespace DapperAid.Ddl
             sb.Append("create table " + table.Name + " (");
             // 各列の定義を生成
             var delimiter = "";
-            foreach (var column in table.Columns)
+            foreach (var column in table.Columns.Where(c => c.IsKey || c.Select || c.Insert || c.Update))
             {
                 sb.AppendLine(delimiter);
                 delimiter = ",";
@@ -126,7 +126,7 @@ namespace DapperAid.Ddl
                 + "DbType\t"
                 + "Insert値\t"
                 + "Update値");
-            foreach (var column in table.Columns)
+            foreach (var column in table.Columns.Where(c => c.IsKey || c.Select || c.Insert || c.Update))
             {
                 sb.Append("\tColumn:");
                 sb.Append("\t");
