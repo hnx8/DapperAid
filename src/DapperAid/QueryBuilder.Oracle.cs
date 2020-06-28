@@ -75,7 +75,7 @@ namespace DapperAid
             }
 
             /// <summary>
-            /// 一括Upsert(merge)のusing句を生成します。
+            /// Upsert(merge)のusing句を生成します。
             /// </summary>
             /// <param name="columns">recordsから挿入時の値を取り出すべきカラム</param>
             /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
@@ -96,7 +96,7 @@ namespace DapperAid
             /// <param name="records">挿入または更新するレコード（複数件）</param>
             /// <param name="columns">recordsから挿入時の値を取り出すべきカラム</param>
             /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
-            /// <returns>Oracleでは「using (select 値 from dual union select ....) as s」のような静的using句</returns>
+            /// <returns>Oracleでは「using (select 値, 値, ... from dual union select ....) as s」のような静的using句</returns>
             protected override IEnumerable<string> BuildMultiUpsertUsingClause<T>(IEnumerable<T> records, IReadOnlyList<TableInfo.Column> columns)
             {
                 var postfix = ") as s";

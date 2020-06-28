@@ -241,7 +241,7 @@ namespace DapperAid
         }
 
         /// <summary>
-        /// Upsert未対応DBMS向けに、指定されたレコードを一括挿入または更新します（既存レコードのUPDATEを試み、未存在だった場合にはINSERTを行います）
+        /// Upsert未対応DBMS向けに、指定されたレコードを１件ずつ挿入または更新します（既存レコードのUPDATEを試み、未存在だった場合にはINSERTを行います）
         /// </summary>
         /// <param name="records">挿入または更新するレコード（複数件）</param>
         /// <param name="insertTargetColumns">insert実行時の値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2, t.Col3 }</c>」</param>

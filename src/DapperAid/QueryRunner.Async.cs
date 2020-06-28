@@ -1,8 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Data;
+using System.Linq;
 using System.Linq.Expressions;
 using System.Threading.Tasks;
 using Dapper;
+using DapperAid.Helpers;
 
 namespace DapperAid
 {
@@ -97,9 +100,35 @@ namespace DapperAid
         /// <remarks>
         /// 自動連番に対応していないテーブル/DBMSでは例外がスローされます。
         /// </remarks>
-        public Task<int> InsertAndRetrieveIdAsync<T>(T data, Expression<Func<T, dynamic>> targetColumns = null)
+        public async Task<int> InsertAndRetrieveIdAsync<T>(T data, Expression<Func<T, dynamic>> targetColumns = null)
         {
-            return Task.Run(() => this.InsertAndRetrieveId(data, targetColumns));
+            var sql = this.Builder.BuildInsertAndRetrieveId<T>(targetColumns);
+
+            var tableInfo = this.Builder.GetTableInfo<T>();
+            var idProp = tableInfo.RetrieveInsertedIdColumn.PropertyInfo;
+            object insertedId;
+            if (sql.Contains(" into " + this.Builder.ParameterMarker + idProp.Name))
+            {
+                // 採番値がoutパラメータへ格納される場合(Oracleなど)、outパラメータ含む各パラメータをバインドして実行、採番値を把握
+                var parameters = new DynamicParameters();
+                parameters.Add(idProp.Name, MemberAccessor.GetValue(data, idProp), null, ParameterDirection.InputOutput);
+                var columns = (targetColumns == null)
+                    ? tableInfo.Columns.Where(c => c.Insert)
+                    : tableInfo.GetColumns(ExpressionHelper.GetMemberNames(targetColumns.Body));
+                foreach (var column in columns)
+                {
+                    this.Builder.AddParameter(parameters, column.PropertyInfo.Name, MemberAccessor.GetValue(data, column.PropertyInfo));
+                }
+                await this.Connection.ExecuteAsync(sql, parameters, this.Transaction, this.Timeout);
+                insertedId = parameters.Get<object>(idProp.Name);
+            }
+            else
+            {
+                // 通常のDBMSについては、SQL実行結果列の値として採番値を把握
+                insertedId = await this.Connection.ExecuteScalarAsync(sql, data, this.Transaction, this.Timeout);
+            }
+            MemberAccessor.SetValue(data, idProp, Convert.ChangeType(insertedId, idProp.PropertyType));
+            return 1;
         }
 
         /// <summary>
@@ -109,9 +138,14 @@ namespace DapperAid
         /// <param name="targetColumns">値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>挿入された行数</returns>
-        public Task<int> InsertRowsAsync<T>(IEnumerable<T> records, Expression<Func<T, dynamic>> targetColumns = null)
+        public async Task<int> InsertRowsAsync<T>(IEnumerable<T> records, Expression<Func<T, dynamic>> targetColumns = null)
         {
-            return Task.Run(() => this.InsertRows(records, targetColumns));
+            var ret = 0;
+            foreach (var sql in this.Builder.BuildMultiInsert(records, targetColumns))
+            {
+                ret += await this.Connection.ExecuteAsync(sql, null, this.Transaction, this.Timeout);
+            }
+            return ret;
         }
 
         /// <summary>
@@ -122,9 +156,15 @@ namespace DapperAid
         /// <param name="updateTargetColumns">update実行時の値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col2, t.Col3 }</c>」</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>挿入または更新された行数</returns>
-        public Task<int> InsertOrUpdateAsync<T>(T data, Expression<Func<T, dynamic>> insertTargetColumns = null, Expression<Func<T, dynamic>> updateTargetColumns = null)
+        public async Task<int> InsertOrUpdateAsync<T>(T data, Expression<Func<T, dynamic>> insertTargetColumns = null, Expression<Func<T, dynamic>> updateTargetColumns = null)
         {
-            return Task.Run(() => this.InsertOrUpdate(data, insertTargetColumns, updateTargetColumns));
+            if (!this.Builder.SupportsUpsert)
+            {
+                return UpdateOrInsertOnebyone(new T[] { data }, insertTargetColumns, updateTargetColumns);
+            }
+
+            var sql = this.Builder.BuildUpsert(insertTargetColumns, updateTargetColumns);
+            return await this.Connection.ExecuteAsync(sql, data, this.Transaction, this.Timeout);
         }
 
         /// <summary>
@@ -135,9 +175,43 @@ namespace DapperAid
         /// <param name="updateTargetColumns">update実行時の値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col2, t.Col3 }</c>」</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>挿入または更新された行数</returns>
-        public Task<int> InsertOrUpdateRowsAsync<T>(IEnumerable<T> records, Expression<Func<T, dynamic>> insertTargetColumns = null, Expression<Func<T, dynamic>> updateTargetColumns = null)
+        public async Task<int> InsertOrUpdateRowsAsync<T>(IEnumerable<T> records, Expression<Func<T, dynamic>> insertTargetColumns = null, Expression<Func<T, dynamic>> updateTargetColumns = null)
         {
-            return Task.Run(() => this.InsertOrUpdateRows(records, insertTargetColumns, updateTargetColumns));
+            if (!this.Builder.SupportsUpsert)
+            {   // Upsert未対応の場合は１レコードずつ処理実行
+                return UpdateOrInsertOnebyone(records, insertTargetColumns, updateTargetColumns);
+            }
+
+            var ret = 0;
+            foreach (var sql in this.Builder.BuildMultiUpsert(records, insertTargetColumns, updateTargetColumns))
+            {
+                ret += await this.Connection.ExecuteAsync(sql, null, this.Transaction, this.Timeout);
+            }
+            return ret;
+        }
+
+        /// <summary>
+        /// Upsert未対応DBMS向けに、指定されたレコードを非同期で１件ずつ挿入または更新します（既存レコードのUPDATEを試み、未存在だった場合にはINSERTを行います）
+        /// </summary>
+        /// <param name="records">挿入または更新するレコード（複数件）</param>
+        /// <param name="insertTargetColumns">insert実行時の値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2, t.Col3 }</c>」</param>
+        /// <param name="updateTargetColumns">update実行時の値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col2, t.Col3 }</c>」</param>
+        /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
+        /// <returns>挿入または更新された行数</returns>
+        /// <remarks>１レコードずつSQLを実行するため低速です。</remarks>
+        protected async Task<int> UpdateOrInsertOnebyoneAsync<T>(IEnumerable<T> records, Expression<Func<T, dynamic>> insertTargetColumns = null, Expression<Func<T, dynamic>> updateTargetColumns = null)
+        {
+            var insertSql = this.Builder.BuildInsert<T>(insertTargetColumns);
+            var updateSql = this.Builder.BuildUpdate<T>(updateTargetColumns) + this.Builder.BuildWhere<T>(default(T), c => (c.IsKey));
+            var ret = 0;
+            foreach (var record in records)
+            {
+                var updated = await this.Connection.ExecuteAsync(updateSql, record, this.Transaction, this.Timeout);
+                ret += (updated > 0)
+                    ? updated
+                    : await this.Connection.ExecuteAsync(insertSql, record, this.Transaction, this.Timeout);
+            }
+            return ret;
         }
 
 

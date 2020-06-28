@@ -429,7 +429,7 @@ namespace DapperAid
             //
         }
         /// <summary>
-        /// 一括Upsert(merge)のusing句を生成します。
+        /// Upsert(merge)のusing句を生成します。
         /// </summary>
         /// <param name="columns">recordsから挿入時の値を取り出すべきカラム</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
