@@ -120,13 +120,14 @@ namespace DapperAid
             if (value.GetType().GetInterfaces().Any(t => t.IsConstructedGenericType && t.GetGenericTypeDefinition() == typeof(ICollection<>)))
             {
                 var sb = new StringBuilder();
-                var delimiter = "(";
+                sb.Append("ARRAY[");
+                var delimiter = "";
                 foreach (var v in value as System.Collections.IEnumerable)
                 {
                     sb.Append(delimiter).Append(ToSqlLiteral(v));
                     delimiter = ",";
                 }
-                sb.Append(")");
+                sb.Append("]");
                 return sb.ToString();
             }
             return value.ToString();

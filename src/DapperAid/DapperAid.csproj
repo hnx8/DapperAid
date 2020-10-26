@@ -4,7 +4,7 @@
     <LangVersion>5</LangVersion>
   </PropertyGroup>
   <PropertyGroup>
-    <Version>0.8.6</Version>
+    <Version>0.8.7</Version>
     <Authors>hnx8(H.Takahashi)</Authors>
     <Copyright>Copyright (C) hnx8(H.Takahashi)</Copyright>
     <PackageProjectUrl>https://github.com/hnx8/DapperAid</PackageProjectUrl>
@@ -18,7 +18,7 @@
 属性/ラムダ式の指定をもとに内蔵クエリビルダが実行SQLを自動生成します。SQL記述不要でDBを参照更新できます。
 
 This library provides CRUD operations of the database as Extension Methods.
-By specifying Attribute / Lambda-Expression, You can perform database query and update using Dapper without writing SQL.</Description>
+By specifying Attribute / Lambda-Expression, You can perform database query/update using Dapper without writing SQL.</Description>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)'=='Release'">
