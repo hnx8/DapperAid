@@ -325,20 +325,20 @@ Condition values are bound to parameters.
 ```
 SQL-specific comparison operators `in`, `like`, and `between` are also supported.
 ```cs
-using DapperAid; // uses "ToSql" static class
+using DapperAid; // uses "SqlExpr" static class
 
     string[] inValues = {"111", "222", "333"}; // (bound to @TextCol)
-    .Select<T>(t => t.TextCol == ToSql.In(inValues)); // -> where "TextCol" in @TextCol
+    .Select<T>(t => t.TextCol == SqlExpr.In(inValues)); // -> where "TextCol" in @TextCol
     
     string likeValue = "%test%"; // (bound to @TextCol)
-    .Select<T>(t => t.TextCol == ToSql.Like(likeValue)); // -> where "TextCol" like @TextCol
+    .Select<T>(t => t.TextCol == SqlExpr.Like(likeValue)); // -> where "TextCol" like @TextCol
 
     int b1 = 1; // (bound to @IntCol)
     int b2 = 99; // (bound to @P01)
-    .Select<T>(t => t.IntCol == ToSql.Between(b1, b2)); // -> where "IntCol" between @IntCol and @P01
+    .Select<T>(t => t.IntCol == SqlExpr.Between(b1, b2)); // -> where "IntCol" between @IntCol and @P01
 
     // when "!=" is used, SQL is also generated as "not"
-    .Select<T>(t => t.TextCol != ToSql.In(inValues)); // -> where "TextCol" not in @TextCol
+    .Select<T>(t => t.TextCol != SqlExpr.In(inValues)); // -> where "TextCol" not in @TextCol
 ```
 - Note: IN conditionals are further expanded by Dapper's List Support feature.
     
@@ -370,16 +370,33 @@ It can also be combined with the condition judgment not based on SQL.
 ## SQL direct description
 You can also describe conditional expressions and subqueries directly.
 ```cs
-using DapperAid; // uses "ToSql" static class
+using DapperAid; // uses "SqlExpr" static class
 
-    .Select<T>(t => t.TextCol == ToSql.In<string>("select text from otherTable where..."));
+    .Select<T>(t => t.TextCol == SqlExpr.In<string>("select text from otherTable where..."));
     // --> where "TextCol" in(select text from otherTable where...)
 
-    .Select<T>(t => ToSql.Eval("ABS(IntCol) < 5"));
-    // --> where (ABS(IntCol) < 5)
+    .Select<T>(t => SqlExpr.Eval("ABS(IntCol) < 5"));
+    // --> where ABS(IntCol) < 5
 
-    .Select<T>(t => ToSql.Eval("exists(select * from otherTable where...)"));
+    .Select<T>(t => SqlExpr.Eval("exists(select * from otherTable where...)"));
     // --> where (exists(select * from otherTable where...))
+
+    int intVal = 99; // (bound to @P00, @P01 or such name)
+    .Select<T>(t => SqlExpr.Eval("IntCol < ", intVal, " or IntCol2 > ", intVal));
+    // --> where IntCol < @P00 or IntCol2 > @P01 
+
+    var idText = "userIdText"; // (bound to @P##)
+    var pwText = "passswordText"; // (bound to @P##)
+    var salt = "hashsalt"; // (bound to @P##)
+    .Select<T>(t => SqlExpr.Eval("id=", idText, " AND pw=CRYPT(", pwText, ", pw)"));
+    // --> where id=@P00 AND pw=CRYPT(@P01, pw)
+
+     .Select<T>(t => t.TextCol == SqlExpr.Eval<string>("CRYPT(", pwText, ", pw)"));
+    // --> where "TextCol"=CRYPT(@P00, pw)
+
+    .Select<T>(t => t.TextCol == SqlExpr.Eval<string>("CRYPT(", pwText, ",", salt, ")"));
+    // -->  where "TextCol"=CRYPT(@P00,@P01)
+
 ```
 
 # <a name="attributes"></a>About Table Attributes

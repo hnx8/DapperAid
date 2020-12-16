@@ -130,7 +130,7 @@ namespace DapperAid
 
             /// <summary>パラメータ値上限1000件を考慮してIn条件式を組み立てます(Oracleのみの特殊対処)</summary>
             /// <remarks>パラメータ値が1000件超の場合は「([COL] Like :P00)or([COL] Like :P01)...」といった条件式が返される。パラメータ値は1000件単位でバインドされる</remarks>
-            protected override string BuildWhereIn(Dapper.DynamicParameters parameters, TableInfo.Column column, bool opIsNot, object values)
+            public override string BuildWhereIn(Dapper.DynamicParameters parameters, TableInfo.Column column, bool opIsNot, object values)
             {
                 var allValues = (values as System.Collections.IEnumerable).Cast<object>().ToArray();
                 if (allValues.Length <= 1000)

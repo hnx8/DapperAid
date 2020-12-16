@@ -777,18 +777,17 @@ namespace DapperAid
                     return "not(" + BuildWhere(parameters, tableInfo, unaryExpr.Operand) + ")";
                 }
 
-                // 特定のメソッド呼び出しが指定されているかを判定
+                // DapperAid固有のSQL条件式記述用メソッドで式木を記述している場合は、SQL条件式生成メソッドを呼び出してSQLを組み立てる
                 var methodCallExpr = ExpressionHelper.CastTo<MethodCallExpression>(expression);
-                if (methodCallExpr != null && methodCallExpr.Method != null && methodCallExpr.Method.DeclaringType == typeof(ToSql))
+                if (methodCallExpr != null && methodCallExpr.Method != null && typeof(ISqlExpr).IsAssignableFrom(methodCallExpr.Method.DeclaringType))
                 {
-                    if (methodCallExpr.Method.Name == ToSql.NameOf.Eval)
-                    {   // ToSql.Eval(string)：指定されたSQL文字列を直接埋め込む
-                        var argumentExpression = methodCallExpr.Arguments[0];
-                        if (argumentExpression.Type == typeof(string))
-                        {
-                            return "(" + ExpressionHelper.EvaluateValue(argumentExpression) + ")";
-                        }
-                    }
+                    return InstanceCreator.Create<ISqlExpr>(methodCallExpr.Method.DeclaringType).BuildSql(
+                        methodCallExpr.Method.Name,
+                        methodCallExpr.Arguments,
+                        this,
+                        parameters,
+                        null,
+                        isNot);
                 }
 
                 // いずれでもなければ例外
@@ -865,45 +864,20 @@ namespace DapperAid
 
             var condColumn = leftMember ?? rightMember;
             var valueExpression = ExpressionHelper.CastTo<Expression>(condColumn == leftMember ? binaryExpr.Right : binaryExpr.Left);
-            if (valueExpression is MethodCallExpression)
-            {   // 値指定時に特定のToSqlメソッドを通している場合は、メソッドに応じたSQLを組み立てる
+            if (valueExpression is MethodCallExpression && typeof(ISqlExpr).IsAssignableFrom((valueExpression as MethodCallExpression).Method.DeclaringType))
+            {   // DapperAid固有のSQL条件式記述用メソッドで値指定している場合は、SQL条件式生成メソッドを呼び出してSQLを組み立てる
                 var method = (valueExpression as MethodCallExpression).Method;
-                if (method.DeclaringType == typeof(ToSql))
-                {
-                    if (method.Name == ToSql.NameOf.Like)
-                    {   // ToSql.Like(string)：比較演算子をLike演算子とする
-                        op = (opIsNot ? " not" : "") + " like ";
-                        valueExpression = (valueExpression as MethodCallExpression).Arguments[0];
-                    }
-                    else if (method.Name == ToSql.NameOf.In)
-                    {
-                        valueExpression = (valueExpression as MethodCallExpression).Arguments[0];
-                        if (valueExpression.Type == typeof(string))
-                        {   // ToSql.In(string)： INサブクエリとして指定された文字列を直接埋め込む
-                            return condColumn.Name + (opIsNot ? " not" : "") + " in(" + ExpressionHelper.EvaluateValue(valueExpression) + ")";
-                        }
-                        else
-                        {   // ToSql.In(コレクション)： In演算子を組み立てる
-                            return BuildWhereIn(parameters, condColumn, opIsNot, ExpressionHelper.EvaluateValue(valueExpression));
-                        }
-                    }
-                    else if (method.Name == ToSql.NameOf.Between)
-                    {    // ToSql.Between(値1, 値2)： Between演算子を組み立て、パラメータを２つバインドする。nullの可能性は考慮しない
-                        var value1 = ExpressionHelper.EvaluateValue((valueExpression as MethodCallExpression).Arguments[0]);
-                        var value2 = ExpressionHelper.EvaluateValue((valueExpression as MethodCallExpression).Arguments[1]);
-                        return condColumn.Name + (opIsNot ? " not" : "") + " between "
-                            + AddParameter(parameters, condColumn.PropertyInfo.Name, value1)
-                            + " and "
-                            + AddParameter(parameters, condColumn.PropertyInfo.Name, value2);
-                    }
-                    else
-                    {
-                        throw new InvalidExpressionException(expression.ToString());
-                    }
-                }
+                return InstanceCreator.Create<ISqlExpr>(method.DeclaringType).BuildSql(
+                    (valueExpression as MethodCallExpression).Method.Name,
+                    (valueExpression as MethodCallExpression).Arguments,
+                    this,
+                    parameters,
+                    condColumn,
+                    opIsNot);
             }
-            var value = ExpressionHelper.EvaluateValue(valueExpression);
 
+            // カラム指定でない側の指定値を把握しSQL条件式を組み立てる
+            var value = ExpressionHelper.EvaluateValue(valueExpression);
             if (value == null)
             {
                 return condColumn.Name + " is" + (opIsNot ? " not" : "") + " null";
@@ -928,7 +902,7 @@ namespace DapperAid
         /// <remarks>
         /// サブクラスによりオーバーライドされることがあります（Oracle/Postgresでは生成内容が変わります）
         /// </remarks>
-        protected virtual string BuildWhereIn(DynamicParameters parameters, TableInfo.Column column, bool opIsNot, object values)
+        public virtual string BuildWhereIn(DynamicParameters parameters, TableInfo.Column column, bool opIsNot, object values)
         {
             return column.Name + (opIsNot ? " not" : "") + " in " + AddParameter(parameters, column.PropertyInfo.Name, values);
             // →DapperのList Support機能により、カッコつきin句「in (@xx1, @xx2, ...)」へ展開されたうえで実行される
