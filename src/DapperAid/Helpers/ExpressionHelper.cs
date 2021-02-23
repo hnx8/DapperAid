@@ -28,10 +28,13 @@ namespace DapperAid.Helpers
         /// <summary>
         /// 式木が表している具体的な値を返します。
         /// </summary>
-        /// <param name="expression">値を指定している式木</param>
+        /// <param name="exp">値を指定している式木</param>
         /// <returns>値</returns>
-        public static object EvaluateValue(this Expression expression)
+        public static object EvaluateValue(this Expression exp)
         {
+            // Boxingを展開
+            var expression = exp.CastTo<Expression>();
+
             if (expression is ConstantExpression)
             {   // 定数：値を返す
                 return (expression as ConstantExpression).Value;
@@ -72,57 +75,31 @@ namespace DapperAid.Helpers
                 return array.GetValue(index);
             }
 
-            // フィールド/プロパティ：１つづつたどっていく
-            var memberInfoList = new List<MemberInfo>();
-            var temp = CastTo<Expression>(expression);
-            while (!(temp is ConstantExpression))
+            // メンバ（フィールドまたはプロパティ）：プロパティ/フィールド値を取り出す
+            // ※インスタンスメンバならインスタンス値を再帰把握
+            var member = (expression as MemberExpression);
+            if (member != null)
             {
-                var member = CastTo<MemberExpression>(temp);
-                if (member == null)
-                {   // フィールドでもプロパティでもない
-                    if (expression != temp)
-                    {   // 再帰
-                        return EvaluateValue(temp);
-                    }
-                    else
-                    {   // 再帰できない：ラムダ実行により値取得
-                        var lambda = Expression.Lambda(expression);
-                        return lambda.Compile().DynamicInvoke();
-                    }
-                }
-                if (member.Expression == null)
-                {   // static
-                    if (member.Member.MemberType == MemberTypes.Property)
-                    {
-                        var info = (PropertyInfo)member.Member;
-                        return MemberAccessor.GetStaticValue(info);
-                    }
-                    if (member.Member.MemberType == MemberTypes.Field)
-                    {
-                        var info = (FieldInfo)member.Member;
-                        return MemberAccessor.GetStaticValue(info);
-                    }
-                    throw new EvaluateException("can't evaluate:" + member.Member.ToString());
-                }
-                // instance
-                memberInfoList.Add(member.Member);
-                temp = CastTo<Expression>(member.Expression);
-            }
-            var value = ((ConstantExpression)temp).Value;
-            for (var i = memberInfoList.Count - 1; i >= 0; i--)
-            {
-                var mi = memberInfoList[i];
-                if (mi is PropertyInfo)
+                if (member.Member.MemberType == MemberTypes.Property)
                 {
-                    value = MemberAccessor.GetValue(value, (mi as PropertyInfo));
+                    var info = (PropertyInfo)member.Member;
+                    return (member.Expression != null)
+                        ? MemberAccessor.GetValue(EvaluateValue(member.Expression), info)
+                        : MemberAccessor.GetStaticValue(info);
                 }
-                else if (mi is FieldInfo)
+                if (member.Member.MemberType == MemberTypes.Field)
                 {
-                    value = MemberAccessor.GetValue(value, (mi as FieldInfo));
+                    var info = (FieldInfo)member.Member;
+                    return (member.Expression != null)
+                        ? MemberAccessor.GetValue(EvaluateValue(member.Expression), info)
+                        : MemberAccessor.GetStaticValue(info);
                 }
             }
-            return value;
+
+            // ここまでの処理で値を特定できなかった：実行して値を取り出す
+            return Expression.Lambda(expression).Compile().DynamicInvoke();
         }
+
 
         /// <summary>
         /// 引数の式木で指定されている項目名を返します。

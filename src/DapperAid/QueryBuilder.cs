@@ -703,15 +703,26 @@ namespace DapperAid
                 foreach (var member in initExpr.Bindings)
                 {
                     var column = tableInfo.GetColumn(member.Member.Name);
-                    var value = ExpressionHelper.EvaluateValue((member as MemberAssignment).Expression);
-                    bindWhere(column, value);
+                    var methodCallExpr = ExpressionHelper.CastTo<MethodCallExpression>((member as MemberAssignment).Expression);
+                    if (methodCallExpr != null && methodCallExpr.Method != null && typeof(ISqlExpr).IsAssignableFrom(methodCallExpr.Method.DeclaringType))
+                    {   // DapperAid固有のSQL条件式記述用メソッドで式木を記述している場合は、SQL条件式生成メソッドを呼び出してSQLを組み立てる
+                        sb.Append(sb.Length == 0 ? " where " : " and ");
+                        sb.Append(InstanceCreator.Create<ISqlExpr>(methodCallExpr.Method.DeclaringType).BuildSql(
+                            methodCallExpr.Method.Name,
+                            methodCallExpr.Arguments,
+                            this,
+                            parameters,
+                            column,
+                            false));
+                    }
+                    else
+                    {   // そうでなければ条件値をバインド
+                        var value = ExpressionHelper.EvaluateValue((member as MemberAssignment).Expression);
+                        bindWhere(column, value);
+                    }
                 }
             }
 
-            if (sb.Length == 0)
-            {
-                throw new ArgumentException("no condition column");
-            }
             return sb.ToString();
         }
 
@@ -790,6 +801,13 @@ namespace DapperAid
                         isNot);
                 }
 
+                // bool値となる変数や処理を記述していればその値を組み立てる
+                var boolValue = ExpressionHelper.EvaluateValue(expression);
+                if (boolValue is bool)
+                {
+                    return ((bool)boolValue == true) ? TrueLiteral : FalseLiteral;
+                }
+
                 // いずれでもなければ例外
                 throw new InvalidExpressionException(expression.ToString());
             }
@@ -804,11 +822,10 @@ namespace DapperAid
                         return andLeft;
                     }
                     var andRight = BuildWhere(parameters, tableInfo, binaryExpr.Right);
-                    if (andLeft == TrueLiteral)
-                    {   // 「left && right」のうちleftがtrueなら、右辺のみを返す
-                        return andRight;
-                    }
-                    return andLeft + " and " + andRight;
+                    // 左辺右辺いずれかでtrueが確定していればもう一方のみを条件とし、そうでなければand条件式を組み立て
+                    return (andLeft == TrueLiteral) ? andRight
+                        : (andRight == TrueLiteral) ? andLeft
+                                                    : andLeft + " and " + andRight;
                 case ExpressionType.OrElse:
                     var orLeft = BuildWhere(parameters, tableInfo, binaryExpr.Left);
                     if (orLeft == TrueLiteral)
@@ -816,11 +833,10 @@ namespace DapperAid
                         return orLeft;
                     }
                     var orRight = BuildWhere(parameters, tableInfo, binaryExpr.Right);
-                    if (orLeft == FalseLiteral)
-                    {   // 「left || right」のうちleftがfalseなら、右辺のみを返す
-                        return orRight;
-                    }
-                    return "(" + orLeft + ") or (" + orRight + ")";
+                    // 左辺右辺いずれかでfalseが確定していればもう一方のみを条件とし、そうでなければor条件式を組み立て
+                    return (orLeft == FalseLiteral) ? orRight
+                        : (orRight == FalseLiteral) ? orLeft
+                                                    : "(" + orLeft + " or " + orRight + ")";
             }
 
             var leftMember = getIfOperandIsConditionColumn(binaryExpr.Left);
