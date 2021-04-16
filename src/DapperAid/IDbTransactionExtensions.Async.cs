@@ -43,14 +43,43 @@ namespace DapperAid
         /// </summary>
         /// <param name="transaction">DBトランザクション</param>
         /// <param name="where">レコード絞り込み条件（絞り込みを行わず全件対象とする場合はnull）</param>
+        /// <param name="otherClauses">SQL文の末尾に付加するorderBy条件/limit/offset/forUpdate指定などがあれば、その内容</param>
+        /// <param name="timeout">タイムアウト時間</param>
+        /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
+        /// <returns>レコードのリスト</returns>
+        public static Task<IReadOnlyList<T>> SelectAsync<T>(this IDbTransaction transaction, Expression<Func<T, bool>> where = null, string otherClauses = null, int? timeout = null)
+        {
+            return new QueryRunner(transaction, timeout).SelectAsync<T, T>(where, otherClauses);
+        }
+
+        /// <summary>
+        /// 指定されたテーブルからレコードのリストを非同期で取得します。
+        /// </summary>
+        /// <param name="transaction">DBトランザクション</param>
+        /// <param name="where">レコード絞り込み条件（絞り込みを行わず全件対象とする場合はnull）</param>
         /// <param name="targetColumns">値取得対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
         /// <param name="otherClauses">SQL文の末尾に付加するorderBy条件/limit/offset/forUpdate指定などがあれば、その内容</param>
         /// <param name="timeout">タイムアウト時間</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>レコードのリスト</returns>
-        public static Task<IReadOnlyList<T>> SelectAsync<T>(this IDbTransaction transaction, Expression<Func<T, bool>> where = null, Expression<Func<T, dynamic>> targetColumns = null, string otherClauses = null, int? timeout = null)
+        public static Task<IReadOnlyList<T>> SelectAsync<T>(this IDbTransaction transaction, Expression<Func<T, bool>> where, Expression<Func<T, dynamic>> targetColumns, string otherClauses = null, int? timeout = null)
         {
             return new QueryRunner(transaction, timeout).SelectAsync(where, targetColumns, otherClauses);
+        }
+
+        /// <summary>
+        /// 指定されたテーブルからレコードのリストを非同期で取得します。
+        /// </summary>
+        /// <param name="transaction">DBトランザクション</param>
+        /// <param name="where">レコード絞り込み条件（絞り込みを行わず全件対象とする場合はnull）</param>
+        /// <param name="otherClauses">SQL文の末尾に付加するorderBy条件/limit/offset/forUpdate指定などがあれば、その内容</param>
+        /// <param name="timeout">タイムアウト時間</param>
+        /// <typeparam name="TFrom">取得対象テーブルにマッピングされた型</typeparam>
+        /// <typeparam name="TColumns">取得対象列にマッピングされた型</typeparam>
+        /// <returns>レコードのリスト</returns>
+        public static Task<IReadOnlyList<TColumns>> SelectAsync<TFrom, TColumns>(this IDbTransaction transaction, Expression<Func<TFrom, bool>> where = null, string otherClauses = null, int? timeout = null)
+        {
+            return new QueryRunner(transaction, timeout).SelectAsync<TFrom, TColumns>(where, otherClauses);
         }
 
 
@@ -58,7 +87,7 @@ namespace DapperAid
         /// 指定された値でレコードを非同期で挿入します。
         /// </summary>
         /// <param name="transaction">DBトランザクション</param>
-        /// <param name="values">設定値を初期化子で指定するラムダ式：例：「<c>() => new Tbl1 { Key1 = 1, Value = 99 }</c>」</param>
+        /// <param name="values">値設定対象カラム・設定値を初期化子で指定するラムダ式。例：「<c>() => new Tbl1 { Key1 = 1, Value = 99 }</c>」</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>挿入された行数</returns>
         public static Task<int> InsertAsync<T>(this IDbTransaction transaction, Expression<Func<T>> values)
@@ -70,7 +99,7 @@ namespace DapperAid
         /// 指定された値でレコードを非同期で挿入します。
         /// </summary>
         /// <param name="transaction">DBトランザクション</param>
-        /// <param name="values">設定値を初期化子で指定するラムダ式。例：「<c>() => new Tbl1 { Key1 = 1, Value = 99 }</c>」</param>
+        /// <param name="values">値設定対象カラム・設定値を初期化子で指定するラムダ式。例：「<c>() => new Tbl1 { Key1 = 1, Value = 99 }</c>」</param>
         /// <param name="timeout">タイムアウト時間</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>挿入された行数</returns>
@@ -177,7 +206,7 @@ namespace DapperAid
         /// 指定された条件にマッチするレコードについて、指定されたカラムの値を非同期で更新します。
         /// </summary>
         /// <param name="transaction">DBトランザクション</param>
-        /// <param name="values">更新値を初期化子で指定するラムダ式。例：「<c>() => new Tbl1 { Value1 = 99, Flg = true }</c>」</param>
+        /// <param name="values">更新対象カラム・更新値を初期化子で指定するラムダ式。例：「<c>() => new Tbl1 { Value1 = 99, Flg = true }</c>」</param>
         /// <param name="where">更新対象レコードの条件</param>
         /// <param name="timeout">タイムアウト時間</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>

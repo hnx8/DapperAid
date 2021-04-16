@@ -113,17 +113,35 @@ namespace DapperAid
             return result as IReadOnlyList<T>;
         }
 
+        /// <summary>
+        /// 指定されたテーブルからレコードのリストを取得します。
+        /// </summary>
+        /// <typeparam name="TFrom">取得対象テーブルにマッピングされた型</typeparam>
+        /// <typeparam name="TColumns">取得対象列にマッピングされた型</typeparam>
+        /// <param name="where">レコード絞り込み条件（絞り込みを行わず全件対象とする場合はnull）</param>
+        /// <param name="otherClauses">SQL文の末尾に付加するorderBy条件/limit/offset/forUpdate指定などがあれば、その内容</param>
+        /// <returns>レコードのリスト</returns>
+        public IReadOnlyList<TColumns> Select<TFrom, TColumns>(Expression<Func<TFrom, bool>> where = null, string otherClauses = null)
+        {
+            var parameters = new DynamicParameters();
+            var sql = this.Builder.BuildSelect<TFrom, TColumns>()
+                + this.Builder.BuildWhere(parameters, where)
+                + this.Builder.BuildSelectOrderByEtc<TFrom, TColumns>(otherClauses);
+            var result = this.Connection.Query<TColumns>(sql, parameters, this.Transaction, true, this.Timeout);
+            return result as IReadOnlyList<TColumns>;
+        }
+
 
         /// <summary>
         /// 指定された値でレコードを挿入します。
         /// </summary>
-        /// <param name="values">設定値を初期化子で指定するラムダ式。例：「<c>() => new Tbl1 { Key1 = 1, Value = 99 }</c>」</param>
+        /// <param name="values">値設定対象カラム・設定値を初期化子で指定するラムダ式。例：「<c>() => new Tbl1 { Key1 = 1, Value = 99 }</c>」</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>挿入された行数</returns>
         public int Insert<T>(Expression<Func<T>> values)
         {
-            var sql = this.Builder.BuildInsert<T>(values);
-            var parameters = this.Builder.BindValues(values);
+            var parameters = new DynamicParameters();
+            var sql = this.Builder.BuildInsert<T>(parameters, values);
             return this.Connection.Execute(sql, parameters, this.Transaction, this.Timeout);
         }
 
@@ -268,14 +286,14 @@ namespace DapperAid
         /// <summary>
         /// 指定された条件にマッチするレコードについて、指定されたカラムの値を更新します。
         /// </summary>
-        /// <param name="values">更新値を初期化子で指定するラムダ式。例：「<c>() => new Tbl1 { Value1 = 99, Flg = true }</c>」</param>
+        /// <param name="values">更新対象カラム・更新値を初期化子で指定するラムダ式。例：「<c>() => new Tbl1 { Value1 = 99, Flg = true }</c>」</param>
         /// <param name="where">更新対象レコードの条件（全件対象とする場合はnull）</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>更新された行数</returns>
         public int Update<T>(Expression<Func<T>> values, Expression<Func<T, bool>> where)
         {
-            var parameters = this.Builder.BindValues(values);
-            var sql = this.Builder.BuildUpdate<T>(values)
+            var parameters = new DynamicParameters();
+            var sql = this.Builder.BuildUpdate<T>(parameters, values)
                 + this.Builder.BuildWhere(parameters, where);
             return this.Connection.Execute(sql, parameters, this.Transaction, this.Timeout);
         }

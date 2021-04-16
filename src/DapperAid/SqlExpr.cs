@@ -83,7 +83,7 @@ namespace DapperAid
         /// Where条件式の式木（ラムダ）で条件式として用いた場合、引数で指定されたSQL文字列およびバインド値がWhere条件として追加されます。
         /// <example>
         /// 使用例：<c>con.Select&lt;T_USER&gt;(t => Eval("id=", idText, "AND pw=CRYPT(", pwText, ", pw)")); </c>
-        /// <para>→SQLは「where id= @P01 AND pw=CRYPT( @P02 , pw)」などとなり、変数idText,pwTextの保持値がパラメータバインドされます。<para>
+        /// <para>→SQLは「where id= @P01 AND pw=CRYPT( @P02 , pw)」などとなり、変数idText,pwTextの保持値がパラメータバインドされます。</para>
         /// </example>
         /// </summary>
         /// <param name="sqlExpression">SQL条件式</param>
@@ -97,11 +97,11 @@ namespace DapperAid
         /// Where条件式の式木（ラムダ）で値として用いた場合、引数で指定されたSQL文字列およびバインド値が条件式として追加されます。
         /// <example>
         /// 使用例1：<c>con.Select&lt;T_USER&gt;(t => pw == Eval&lt;string&gt;("CRYPT(", pwText, ", pw)")); </c>
-        /// <para>→SQLは「where pw=CRYPT( @P01, pw)」などとなり、変数pwTextの保持値がパラメータバインドされます。<para>
+        /// <para>→SQLは「where pw=CRYPT( @P01, pw)」などとなり、変数pwTextの保持値がパラメータバインドされます。</para>
         /// </example>
         /// <example>
         /// 使用例2：<c>con.Select&lt;T_USER&gt;(t => pw == Eval&lt;string&gt;("CRYPT(", pwText, ",", salt, ")")); </c>
-        /// <para>→SQLは「where pw=CRYPT( @P01 , @P02 ))」などとなり、変数pwText,saltの保持値がパラメータバインドされます。<para>
+        /// <para>→SQLは「where pw=CRYPT( @P01 , @P02 ))」などとなり、変数pwText,saltの保持値がパラメータバインドされます。</para>
         /// </example>
         /// </summary>
         /// <param name="sqlExpression">SQL条件式</param>
@@ -173,10 +173,10 @@ namespace DapperAid
                     (column == null ? (opIsNot ? "not " : "") : (column.Name + (opIsNot ? "<>" : "="))) + ExpressionHelper.EvaluateValue(arguments[0])
                     );
                 // object[] に相当する部分が指定されていればその部分も組み立てる
-                object[] bindvalueAndSubsequentsql = (arguments.Count == 2 ? ExpressionHelper.EvaluateValue(arguments[1]) as object[] : null);
-                for (int i = 0; bindvalueAndSubsequentsql != null && i < bindvalueAndSubsequentsql.Length; i++)
+                var bindvalueAndSubsequentsql = (arguments.Count == 2 ? ExpressionHelper.EvaluateValue(arguments[1]) as object[] : null);
+                for (var i = 0; bindvalueAndSubsequentsql != null && i < bindvalueAndSubsequentsql.Length; i++)
                 {
-                    object value = bindvalueAndSubsequentsql[i];
+                    var value = bindvalueAndSubsequentsql[i];
                     if (i % 2 == 0)
                     {   // paramsとしては偶数（メソッド引数としては2,4,6,8,…,2n番目）：指定されている値をバインド
                         sb.Append(builder.AddParameter(parameters, null, value));
@@ -188,7 +188,7 @@ namespace DapperAid
                     else
                     {   // SQLリテラルを指定すべき箇所で誤って文字列以外が指定されている：例外をthrow
                         var badParamName = "argument" + (i + 1);
-                        throw new ArgumentException(badParamName + "(" + (value == null ? "null" : value) + "): No SQL statemnt specified.", badParamName);
+                        throw new ArgumentException(badParamName + "(" + (value ?? "null") + "): No SQL statemnt specified.", badParamName);
                     }
                 }
                 return sb.ToString();

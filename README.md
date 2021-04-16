@@ -115,7 +115,7 @@ void OperationExample() {
         otherClauses: "FOR UPDATE");
     // -> select (all columns) from Members where "Id"=@Id FOR UPDATE
 ```
-### `Select<T>([ where[, targetColumns[, otherClauses]]])` : returns list&lt;T&gt;
+### `Select<T>([ where[, targetColumns][, otherClauses]])` : returns list&lt;T&gt;
 ```cs
     IReadOnlyList<Member> list1 = connection.Select<Member>();
     // -> select (all columns) from Members order by Id
@@ -131,10 +131,31 @@ void OperationExample() {
 
     IReadOnlyList<Member> list4 = connection.Select<Member>(
         r => r.Tel != null,
+        $"ORDER BY {nameof(Member.Name)} LIMIT 5 OFFSET 10");
+    // -> select (all columns) from Members where Phone_No is not null
+    //           ORDER BY Name LIMIT 5 OFFSET 10
+
+    IReadOnlyList<Member> list5 = connection.Select<Member>(
+        r => r.Tel != null,
         r => new { r.Id, r.Name },
         $"ORDER BY {nameof(Member.Name)} LIMIT 5 OFFSET 10");
     // -> select "Id", "Name" from Members where Phone_No is not null
     //           ORDER BY Name LIMIT 5 OFFSET 10
+```
+### `Select<TFrom, TColumns>([ where[, otherClauses]])` : returns list&lt;TColumns&gt;
+```cs
+    class SelColumns {
+        public string Name { get; private set; }
+        public string Tel { get; private set; }
+        [Column("CURRENT_TIMESTAMP")]
+        public DateTime Now { get; set; }
+    }
+
+    IReadOnlyList<SelColumns> listS1 = connection.Select<Member, SelColumns>(
+        r => r.Tel != null
+    );
+    // -> select "Name", Phone_No as "Tel", CURRENT_TIMESTAMP as "Now"
+    //           from Members where Phone_No is not null order by Id
 ```
 ### `Count<T>([where])` : returns the number of rows
 ```cs
@@ -368,7 +389,7 @@ It can also be combined with the condition judgment not based on SQL.
 ```
 
 ## SQL direct description
-You can also describe conditional expressions and subqueries directly.
+You can describe conditional expressions and subqueries directly.
 ```cs
 using DapperAid; // uses "SqlExpr" static class
 
@@ -380,23 +401,51 @@ using DapperAid; // uses "SqlExpr" static class
 
     .Select<T>(t => SqlExpr.Eval("exists(select * from otherTable where...)"));
     // --> where (exists(select * from otherTable where...))
-
+```
+You can also bind parameter values by using `SqlExpr.Eval(...)`.
+```cs
     int intVal = 99; // (bound to @P00, @P01 or such name)
+
     .Select<T>(t => SqlExpr.Eval("IntCol < ", intVal, " or IntCol2 > ", intVal));
     // --> where IntCol < @P00 or IntCol2 > @P01 
+```
+```cs
+    var idRegex = "userIdRegexPattern"; // (bound to @P00)
+    var pwText = "passswordText"; // (bound to @P01)
 
-    var idText = "userIdText"; // (bound to @P##)
-    var pwText = "passswordText"; // (bound to @P##)
-    var salt = "hashsalt"; // (bound to @P##)
-    .Select<T>(t => SqlExpr.Eval("id=", idText, " AND pw=CRYPT(", pwText, ", pw)"));
-    // --> where id=@P00 AND pw=CRYPT(@P01, pw)
+    .Select<T>(t => SqlExpr.Eval("id~", idRegex, " AND pw=CRYPT(", pwText, ", pw)"));
+    // --> where id~@P00 AND pw=CRYPT(@P01, pw) -- works only Postgres
+```
+If you want to descrive only the value expression, use `SqlExpr.Eval<T>(...)`.
+```cs
+    .Select<TableX>(t => t.pw == SqlExpr.Eval<string>("CRYPT('password', pw)"));
+    // --> select (columns) from TableX where "pw"=CRYPT('password', pw)
 
-     .Select<T>(t => t.TextCol == SqlExpr.Eval<string>("CRYPT(", pwText, ", pw)"));
-    // --> where "TextCol"=CRYPT(@P00, pw)
+    .Select<TableX>(t => t.pw == SqlExpr.Eval<string>("CRYPT(", pwText, ", pw)"));
+    // --> select (columns) from TableX where "pw"=CRYPT(@P00, pw)
+```
+- Note: `SqlExpr.Eval<T>(...)` can also be used as the **Value** below. 
+  - `Select<Table>(() => new Table { column = `**Value**`, ...})`
+  - `Insert<Table>(() => new Table { column = `**Value**`, ...})`
+  - `Update<Table>(() => new Table { column = `**Value**`, ...}[, where ])`
+```cs
+    var pwText = "passswordText"; // (bound to @P00)
+    var salt = "hashsalt"; // (bound to @P01)
+    
+    .Select(() => new TableX {
+        pw = SqlExpr.Eval<string>("CRYPT(", pwText, ", pw)")
+    });
+    // --> select (columns) from TableX where "pw"=CRYPT(@P00, pw)
 
-    .Select<T>(t => t.TextCol == SqlExpr.Eval<string>("CRYPT(", pwText, ",", salt, ")"));
-    // -->  where "TextCol"=CRYPT(@P00,@P01)
+    .Insert(() => new TableX {
+        pw = SqlExpr.Eval<string>("CRYPT(", pwText, ",", salt, ")")
+    });
+    // --> insert into TableX("pw") values(CRYPT(@P00,@P01))
 
+    .Update(() => new TableX {
+        pw = SqlExpr.Eval<string>("CRYPT(", pwText, ",", salt, ")")
+    }, r => { ... });
+    // --> update TableX set "pw"=CRYPT(@P00,@P01) where ...
 ```
 
 # <a name="attributes"></a>About Table Attributes

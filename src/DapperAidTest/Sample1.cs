@@ -120,6 +120,10 @@ namespace DapperAidTest
                     () => targetMember, // where [Key] or [ConcurrencyCheck] is set
                     otherClauses: "--FOR UPDATE"); // SQLite doesn't support "FOR UPDATE", so commented out 
 
+                // (with SqlExpr)
+                Member select3 = connection.Select(
+                    () => new Member { Id = SqlExpr.Eval<int>("(SELECT MAX(id) FROM Members)") }
+                );
 
                 // select records --------------------
                 IReadOnlyList<Member> list1 = connection.Select<Member>();
@@ -132,6 +136,10 @@ namespace DapperAidTest
                     r => new { r.Id, r.Name });
 
                 IReadOnlyList<Member> list4 = connection.Select<Member>(
+                    r => r.Tel != null,
+                    $"ORDER BY {nameof(Member.Name)} LIMIT 5 OFFSET 10");
+
+                IReadOnlyList<Member> list5 = connection.Select<Member>(
                     r => r.Tel != null,
                     r => new { r.Id, r.Name },
                     $"ORDER BY {nameof(Member.Name)} LIMIT 5 OFFSET 10");
@@ -159,6 +167,11 @@ namespace DapperAidTest
                 int insertX = connection.Insert(
                     () => new Member { Id = 888, Name = "ParticularColumnOnly2" });
 
+                // (with SqlExpr)
+                string nameExample = "SqlExpr.Eval Usage Example";
+                int insertX2 = connection.Insert(
+                    () => new Member { Name = SqlExpr.Eval<string>("Upper(", nameExample, ")") });
+
                 // insert records -------------------
                 int insertMulti = connection.InsertRows(new[] {
                     new Member { Name = "MultiInsert1", Tel = null },
@@ -167,7 +180,7 @@ namespace DapperAidTest
                 });
 
                 // update record ---------------------
-                rec1.Id = 1;
+                rec1 = connection.Select(() => new Member { Id = 1 });
                 rec1.Name = "Updatetest";
                 int update1 = connection.Update(rec1);
 
@@ -177,6 +190,11 @@ namespace DapperAidTest
 
                 int update3 = connection.Update(
                     () => new Member { Name = "updateName" },
+                    r => r.Tel == "55555-5-5555");
+
+                // (with SqlExpr)
+                int update4 = connection.Update(
+                    () => new Member { Name = SqlExpr.Eval<String>("SUBSTR(name,", 1, ",", 4, ")") },
                     r => r.Tel == "55555-5-5555");
 
                 //　delete record 
@@ -192,11 +210,55 @@ namespace DapperAidTest
             }
         }
 
+
+        [SelectSql()]
+        class Ver0_9TestColumns
+        {
+            public string Name { get; private set; }
+            [Key]
+            public string Tel { get; private set; }
+            [Column("CURRENT_TIMESTAMP")]
+            public DateTime Now { get; set; }
+        }
+
+        [SelectSql(GroupByKey = true, DefaultOtherClauses = "")]
+        class Ver0_9TestColumns2
+        {
+            [Key]
+            public string Tel { get; private set; }
+            [Column("COUNT(*)")]
+            public int Count { get; set; }
+        }
+
+
         /// <summary>
-        /// ToSQLクラス指定によるSQL条件の追加テスト
+        /// Ver0.9追加機能（型指定された特定列のみ取得）
         /// </summary>
         [TestMethod]
-        public void ToSqlTest()
+        public void Ver0_9Test()
+        {
+            QueryBuilder.DefaultInstance = new QueryBuilder.SQLite();
+
+            using (IDbConnection connection = GetSqliteDbConnection())
+            {
+                var createTableSql = DDLAttribute.GenerateCreateSQL<Member>();
+                connection.Execute(createTableSql);
+
+                // Get only specific columns specified by type
+                IReadOnlyList<Ver0_9TestColumns> ver09list1 = connection.Select<Member, Ver0_9TestColumns>();
+
+                // Get only specific columns #2 (group by)
+                IReadOnlyList<Ver0_9TestColumns2> ver09list2 = connection.Select<Member, Ver0_9TestColumns2>();
+
+            }
+        }
+
+
+        /// <summary>
+        /// SqlExprクラス指定によるSQL条件の追加テスト
+        /// </summary>
+        [TestMethod]
+        public void SqlExprTest()
         {
             QueryBuilder.DefaultInstance = new QueryBuilder.SQLite();
 
@@ -207,10 +269,15 @@ namespace DapperAidTest
 
                 var list1 = connection.Select<Member>(r =>
                     (r.Name == ToSql.In(new[] { "A", "B" })
-                    || r.Name != ToSql.Like("%TEST%")
-                    || r.Name == ToSql.Between("1", "5")
+                    || r.Name != SqlExpr.Like("%TEST%")
+                    || r.Name == SqlExpr.Between("1", "5")
                     || DateTime.Now < r.CreatedAt));
 
+                var list2 = connection.Select<Member>(r =>
+                    (r.Id == SqlExpr.In<int>("SELECT MAX(id) FROM Members")
+                    || SqlExpr.Eval("EXISTS(SELECT * FROM Members m2 WHERE id=sqlite_version())")
+                    || r.Id == SqlExpr.Eval<int>("MAX(", 1, ",", 2, ",", 3, ")")
+                    ));
             }
         }
 
