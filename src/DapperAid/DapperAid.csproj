@@ -4,7 +4,7 @@
     <LangVersion>5</LangVersion>
   </PropertyGroup>
   <PropertyGroup>
-    <Version>0.9.0</Version>
+    <Version>0.9.1</Version>
     <Authors>hnx8(H.Takahashi)</Authors>
     <Copyright>Copyright (C) hnx8(H.Takahashi)</Copyright>
     <PackageProjectUrl>https://github.com/hnx8/DapperAid</PackageProjectUrl>

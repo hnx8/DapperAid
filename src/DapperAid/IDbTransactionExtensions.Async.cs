@@ -68,6 +68,33 @@ namespace DapperAid
         }
 
         /// <summary>
+        /// 指定されたテーブルからレコードを非同期で取得します。
+        /// </summary>
+        /// <param name="transaction">DBトランザクション</param>
+        /// <param name="where">レコード絞り込み条件（絞り込みを行わない場合はnull）</param>
+        /// <param name="otherClauses">SQL文の末尾に付加するforUpdate指定などがあれば、その内容</param>
+        /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
+        /// <returns>取得したレコード（１件、レコード不存在の場合はnull）</returns>
+        public static Task<T> FirstOrDefaultAsync<T>(this IDbTransaction transaction, Expression<Func<T, bool>> where = null, string otherClauses = null, int? timeout = null)
+        {
+            return new QueryRunner(transaction, timeout).FirstOrDefaultAsync<T, T>(where, otherClauses);
+        }
+
+        /// <summary>
+        /// 指定されたテーブルからレコードを非同期で取得します。
+        /// </summary>
+        /// <param name="transaction">DBトランザクション</param>
+        /// <param name="where">レコード絞り込み条件（絞り込みを行わない場合はnull）</param>
+        /// <param name="otherClauses">SQL文の末尾に付加するforUpdate指定などがあれば、その内容</param>
+        /// <typeparam name="TFrom">取得対象テーブルにマッピングされた型</typeparam>
+        /// <typeparam name="TColumns">取得対象列にマッピングされた型</typeparam>
+        /// <returns>取得したレコード（１件、レコード不存在の場合はnull）</returns>
+        public static Task<TColumns> FirstOrDefaultAsync<TFrom, TColumns>(this IDbTransaction transaction, Expression<Func<TFrom, bool>> where = null, string otherClauses = null, int? timeout = null)
+        {
+            return new QueryRunner(transaction, timeout).FirstOrDefaultAsync<TFrom, TColumns>(where, otherClauses);
+        }
+
+        /// <summary>
         /// 指定されたテーブルからレコードのリストを非同期で取得します。
         /// </summary>
         /// <param name="transaction">DBトランザクション</param>

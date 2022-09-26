@@ -68,6 +68,33 @@ namespace DapperAid
         }
 
         /// <summary>
+        /// 指定されたテーブルからレコードを取得します。
+        /// </summary>
+        /// <param name="connection">DB接続</param>
+        /// <param name="where">レコード絞り込み条件（絞り込みを行わない場合はnull）</param>
+        /// <param name="otherClauses">SQL文の末尾に付加するforUpdate指定などがあれば、その内容</param>
+        /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
+        /// <returns>取得したレコード（１件、レコード不存在の場合はnull）</returns>
+        public static T FirstOrDefault<T>(this IDbConnection connection, Expression<Func<T, bool>> where = null, string otherClauses = null, int? timeout = null)
+        {
+            return new QueryRunner(connection, timeout).FirstOrDefault<T, T>(where, otherClauses);
+        }
+
+        /// <summary>
+        /// 指定されたテーブルからレコードを取得します。
+        /// </summary>
+        /// <param name="connection">DB接続</param>
+        /// <param name="where">レコード絞り込み条件（絞り込みを行わない場合はnull）</param>
+        /// <param name="otherClauses">SQL文の末尾に付加するforUpdate指定などがあれば、その内容</param>
+        /// <typeparam name="TFrom">取得対象テーブルにマッピングされた型</typeparam>
+        /// <typeparam name="TColumns">取得対象列にマッピングされた型</typeparam>
+        /// <returns>取得したレコード（１件、レコード不存在の場合はnull）</returns>
+        public static TColumns FirstOrDefault<TFrom, TColumns>(this IDbConnection connection, Expression<Func<TFrom, bool>> where = null, string otherClauses = null, int? timeout = null)
+        {
+            return new QueryRunner(connection, timeout).FirstOrDefault<TFrom, TColumns>(where, otherClauses);
+        }
+
+        /// <summary>
         /// 指定されたテーブルからレコードのリストを取得します。
         /// </summary>
         /// <param name="connection">DB接続</param>

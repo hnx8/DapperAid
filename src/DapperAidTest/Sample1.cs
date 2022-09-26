@@ -126,6 +126,8 @@ namespace DapperAidTest
                 );
 
                 // select records --------------------
+                Member record = connection.FirstOrDefault<Member>();
+                
                 IReadOnlyList<Member> list1 = connection.Select<Member>();
 
                 IReadOnlyList<Member> list2 = connection.Select<Member>(
