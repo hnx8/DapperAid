@@ -2,6 +2,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Data;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -22,7 +23,7 @@ namespace DapperAid
         /// <remarks>
         /// システム初期化時にDBMSに応じたサブクラスのオブジェクトを設定してください。
         /// </remarks>
-        public static QueryBuilder DefaultInstance = new QueryBuilder();
+        public static QueryBuilder DefaultInstance { get; set; } = new QueryBuilder();
 
 
         /// <summary>
@@ -32,12 +33,7 @@ namespace DapperAid
         /// 一度に挿入する行数*列数が多すぎてパフォーマンスが悪化する場合など、値を調整してください。
         /// ごく一部のDBMS(MSAccessなど)は一括Insert未対応のため1固定となります。
         /// </remarks>
-        public virtual int MultiInsertRowsPerQuery
-        {
-            get { return _multiInsertRowsPerQuery; }
-            set { _multiInsertRowsPerQuery = value; }
-        }
-        private int _multiInsertRowsPerQuery = 1000; // C#6.0以降でないと自動プロパティの初期値が使えないため旧来の書式とする
+        public virtual int MultiInsertRowsPerQuery { get; set; } = 1000;
 
         /// <summary>
         /// DBMSがUpsert(MERGE)に対応していればtrue/未対応ならfalseを設定します。既定値はtrueです。
@@ -46,12 +42,7 @@ namespace DapperAid
         /// SQLServer2008未満、PostgresSQL9.5未満・SQLite3.24(2018-06-04)未満など未対応の環境ではfalseを設定してください。
         /// ごく一部のDBMS(MSAccessなど)はUpsert未対応のためfalse固定となります。
         /// </remarks>
-        public virtual bool SupportsUpsert
-        {
-            get { return _supportsUpsert; }
-            set { _supportsUpsert = value; }
-        }
-        private bool _supportsUpsert = true; // C#6.0以降でないと自動プロパティの初期値が使えないため旧来の書式とする
+        public virtual bool SupportsUpsert { get; set; } = true;
 
 
         #region テーブル/カラム構造 --------------------------------------------
@@ -73,6 +64,10 @@ namespace DapperAid
         /// <returns>テーブル情報</returns>
         public TableInfo GetTableInfo(Type tableType)
         {
+            if (tableType.IsSubclassOf(typeof(Delegate)))
+            {   // テーブル型を指定すべき箇所で誤ってExpressinを指定している場合には例外とする。
+                throw new InvalidOperationException("In this case, Specify the table type instead of Lambda.");
+            }
             return _tables.GetOrAdd(tableType, t => TableInfo.Create(t, EscapeIdentifier));
         }
         private readonly ConcurrentDictionary<Type, TableInfo> _tables = new ConcurrentDictionary<Type, TableInfo>();
@@ -110,19 +105,19 @@ namespace DapperAid
         /// </summary>
         /// <param name="value">値</param>
         /// <returns>SQLリテラル値表記</returns>
-        public string ToSqlLiteral(object value)
+        public string ToSqlLiteral(object? value)
         {
             if (IsNull(value)) { return "null"; }
-            if (value is string) { return ToSqlLiteral(value as string); }
-            if (value is DateTime) { return ToSqlLiteral((DateTime)value); }
-            if (value is bool) { return ((bool)value ? TrueLiteral : FalseLiteral); }
-            if (value is Enum) { return ((Enum)value).ToString("d"); }
-            if (value.GetType().GetInterfaces().Any(t => t.IsConstructedGenericType && t.GetGenericTypeDefinition() == typeof(ICollection<>)))
+            if (value is string s) { return ToSqlLiteral(s); }
+            if (value is DateTime dt) { return ToSqlLiteral(dt); }
+            if (value is bool b) { return (b ? TrueLiteral : FalseLiteral); }
+            if (value is Enum e) { return e.ToString("d"); }
+            if (value is System.Collections.IEnumerable ienumerable && value.GetType().GetInterfaces().Any(t => t.IsConstructedGenericType && t.GetGenericTypeDefinition() == typeof(ICollection<>)))
             {
                 var sb = new StringBuilder();
                 sb.Append("ARRAY[");
                 var delimiter = "";
-                foreach (var v in value as System.Collections.IEnumerable)
+                foreach (var v in ienumerable)
                 {
                     sb.Append(delimiter).Append(ToSqlLiteral(v));
                     delimiter = ",";
@@ -130,7 +125,7 @@ namespace DapperAid
                 sb.Append("]");
                 return sb.ToString();
             }
-            return value.ToString();
+            return value.ToString() ?? throw new ArgumentException($"The value of type {value.GetType().FullName} cannot be represented as a sql literal.");
         }
         /// <summary>
         /// 引数で指定された文字列値をSQLリテラル値表記へと変換します。
@@ -160,7 +155,7 @@ namespace DapperAid
         /// <param name="value">値</param>
         /// <returns>nullに相当する値であればtrue</returns>
         /// <remarks>ごく一部のDBMSは長さゼロの文字列もnullとみなします。</remarks>
-        public virtual bool IsNull(object value)
+        public virtual bool IsNull([NotNullWhen(false)] object? value)
         {
             return (value == null || value is System.DBNull);
         }
@@ -176,11 +171,15 @@ namespace DapperAid
         /// <param name="proposedName">パラメータ名の候補（すでに使用されていなければ採用）</param>
         /// <param name="value">パラメータ値</param>
         /// <returns>バインドされたマーカープリフィックス付きのパラメータ名、例："@Key1"。ただしパラメータオブジェクトがnullの場合はSQLリテラル値</returns>
-        public string AddParameter(DynamicParameters parameters, string proposedName, object value)
+        public string AddParameter(DynamicParameters? parameters, string? proposedName, object? value)
         {
             if (parameters == null)
             {
                 return ToSqlLiteral(value);
+            }
+            if (IsNull(value))
+            {
+                return "null";
             }
 
             var alreadyUsedNames = parameters.ParameterNames.ToArray();
@@ -204,7 +203,7 @@ namespace DapperAid
         /// <param name="expression">バインド値をあらわす式木</param>
         /// <param name="opIsNot">条件式をnotで生成する場合はtrue</param>
         /// <returns>生成されたSQL表現文字列。ただしバインド値がDapperAid固有のSQL条件式記述用メソッドではなかった場合null</returns>
-        protected string TryBindSqlExpr(DynamicParameters parameters, TableInfo.Column column, Expression expression, bool opIsNot)
+        protected string? TryBindSqlExpr(DynamicParameters parameters, TableInfo.Column? column, Expression expression, bool opIsNot)
         {
             var methodCallExpression = ExpressionHelper.CastTo<MethodCallExpression>(expression);
             if (methodCallExpression != null && methodCallExpression.Method != null && typeof(ISqlExpr).IsAssignableFrom(methodCallExpression.Method.DeclaringType))
@@ -230,6 +229,7 @@ namespace DapperAid
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>「select count(*) from [テーブル]」のSQL</returns>
         public string BuildCount<T>()
+            where T : notnull
         {
             var tableInfo = GetTableInfo<T>();
             return "select count(*) from " + tableInfo.Name;
@@ -242,7 +242,8 @@ namespace DapperAid
         /// <param name="targetColumns">値取得対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>「select [各カラム] from [テーブル]」のSQL</returns>
-        public string BuildSelect<T>(Expression<Func<T, dynamic>> targetColumns = null)
+        public string BuildSelect<T>(Expression<Func<T, dynamic>>? targetColumns = null)
+            where T : notnull
         {
             var tableInfo = GetTableInfo<T>();
             var columns = (targetColumns == null)
@@ -258,6 +259,8 @@ namespace DapperAid
         /// <typeparam name="TColumns">取得対象列にマッピングされた型</typeparam>
         /// <returns>「select [各カラム] from [テーブル]」のSQL</returns>
         public string BuildSelect<TFrom, TColumns>()
+            where TFrom : notnull
+            where TColumns : notnull
         {
             var tableInfo = GetTableInfo<TFrom>();
             var columns = GetTableInfo<TColumns>().Columns.Where(c => c.Select).Select(c =>
@@ -301,7 +304,8 @@ namespace DapperAid
         /// <param name="otherClauses">SQL文の末尾に付加するorderBy条件/limit/offset/forUpdate指定などがあれば、その内容</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>Select SQLの末尾（テーブルの設定などに応じたgroup by/order by等の内容）</returns>
-        public string BuildSelectOrderByEtc<T>(Expression<Func<T, dynamic>> targetColumns = null, string otherClauses = null)
+        public string BuildSelectOrderByEtc<T>(Expression<Func<T, dynamic>>? targetColumns = null, string? otherClauses = null)
+            where T : notnull
         {
             var tableInfo = GetTableInfo<T>();
             var sb = new StringBuilder();
@@ -330,7 +334,9 @@ namespace DapperAid
         /// <typeparam name="TFrom">取得対象テーブルにマッピングされた型</typeparam>
         /// <typeparam name="TColumns">取得対象列にマッピングされた型</typeparam>
         /// <returns>Select SQLの末尾（テーブルの設定などに応じたgroup by/order by等の内容）</returns>
-        public string BuildSelectOrderByEtc<TFrom, TColumns>(string otherClauses = null)
+        public string BuildSelectOrderByEtc<TFrom, TColumns>(string? otherClauses = null)
+            where TFrom : notnull
+            where TColumns : notnull
         {
             // 以下、取得対象列にてgroupby/DefaultOtherClausesの定義があればそれを優先、なければ取得対象テーブルにおける指定内容を採用
             var columnsInfo = GetTableInfo<TColumns>();
@@ -386,7 +392,8 @@ namespace DapperAid
         /// <param name="targetColumns">値設定対象カラムを限定する場合は、対象カラムを初期化子で指定するラムダ式。例：「<c>() => new Tbl1 { Key1 = 1, Value = 99 }</c>」「<c>t => new { t.Col1, t.Col2 }</c>」</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>「insert into [テーブル]([各カラム])values([各設定値])」のSQL</returns>
-        public string BuildInsert<T>(LambdaExpression targetColumns = null)
+        public string BuildInsert<T>(LambdaExpression? targetColumns = null)
+            where T : notnull
         {
             var tableInfo = GetTableInfo<T>();
             var columns = (targetColumns == null)
@@ -417,6 +424,7 @@ namespace DapperAid
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>「insert into [テーブル]([各カラム])values([各設定値])」のSQL</returns>
         public string BuildInsert<T>(DynamicParameters parameters, Expression<Func<T>> values)
+            where T : notnull
         {
             var initExpr = (values.Body as MemberInitExpression);
             if (initExpr == null || initExpr.Bindings.Count == 0)
@@ -430,11 +438,12 @@ namespace DapperAid
             foreach (var member in initExpr.Bindings)
             {
                 var column = tableInfo.GetColumn(member.Member.Name);
+                var expression = (member as MemberAssignment)!.Expression;
                 // DapperAid固有のSQL条件式記述用メソッドで値指定している場合は、SQL条件式生成メソッドを呼び出してSQLを組み立てる
-                var valueSql = TryBindSqlExpr(parameters, null, (member as MemberAssignment).Expression, false);
+                var valueSql = TryBindSqlExpr(parameters, null, expression, false);
                 if (valueSql == null)
                 {   // そうでなければ更新値を取り出してバインド
-                    valueSql = AddParameter(parameters, member.Member.Name, ExpressionHelper.EvaluateValue((member as MemberAssignment).Expression));
+                    valueSql = AddParameter(parameters, member.Member.Name, ExpressionHelper.EvaluateValue(expression));
                 }
 
                 if (names.Length > 0)
@@ -458,7 +467,8 @@ namespace DapperAid
         /// DBMSに応じたSQLが生成されます。
         /// 一部のDBMS(Oracleなど)では採番されたIDをoutパラメータに格納するようなSQLが生成されます。
         /// </remarks>
-        public string BuildInsertAndRetrieveId<T>(Expression<Func<T, dynamic>> targetColumns)
+        public string BuildInsertAndRetrieveId<T>(Expression<Func<T, dynamic>>? targetColumns)
+            where T : notnull
         {
             var tableInfo = GetTableInfo<T>();
             if (tableInfo.RetrieveInsertedIdColumn == null)
@@ -478,6 +488,7 @@ namespace DapperAid
         /// 一部のDBMS(Oracleなど)では採番されたIDをoutパラメータに格納するようなSQLが生成されます。
         /// </remarks>
         protected virtual string GetInsertedIdReturningSql<T>(TableInfo.Column column)
+            where T : notnull
         {
             // 具体的なDBMSがわからないと自動連番値の取り出し方法が定まらないため既定では例外とする。
             throw new NotSupportedException("use DBMS-specific QueryBuilder");
@@ -491,7 +502,8 @@ namespace DapperAid
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>「insert into [テーブル]([各カラム]) values ([各設定値]),([各設定値])...」の静的SQL。一度に挿入する行数がMultiInsertRowsPerQueryを超過しないよう分割して返されます</returns>
         /// <remarks>一部のDBMSでは生成されるinsert文の内容が異なります。</remarks>
-        public virtual IEnumerable<string> BuildMultiInsert<T>(IEnumerable<T> records, Expression<Func<T, dynamic>> targetColumns = null)
+        public virtual IEnumerable<string> BuildMultiInsert<T>(IEnumerable<T> records, Expression<Func<T, dynamic>>? targetColumns = null)
+            where T : notnull
         {
             var tableInfo = GetTableInfo<T>();
             var columns = (targetColumns == null
@@ -535,7 +547,8 @@ namespace DapperAid
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>「merge into TABLE using (各カラムの設定値) ... when matched then update ... when not matched then insert ...」などのUpsert用SQL</returns>
         /// <remarks>サブクラスによりオーバーライドされ、DBMSに応じたSQL文が生成されます。基底クラスではSQL2003に準じたmerge文を生成します。</remarks>
-        public virtual string BuildUpsert<T>(Expression<Func<T, dynamic>> insertTargetColumns = null, Expression<Func<T, dynamic>> updateTargetColumns = null)
+        public virtual string BuildUpsert<T>(Expression<Func<T, dynamic>>? insertTargetColumns = null, Expression<Func<T, dynamic>>? updateTargetColumns = null)
+            where T : notnull
         {
             var tableInfo = GetTableInfo<T>();
             // values生成対象カラム（insert対象カラムのうちSQLリテラルによる初期化を行わないカラム）を把握
@@ -558,6 +571,7 @@ namespace DapperAid
         /// <returns>「using(values (@パラメータ名, ...)) as s(カラム名, ...)」などといったusing句</returns>
         /// <remarks>サブクラスによりオーバーライドされ、DBMSに応じたusing句が返されます。（ソーステーブルは別名sとすること）</remarks>
         protected virtual string BuildUpsertUsingClause<T>(IReadOnlyList<TableInfo.Column> columns)
+            where T : notnull
         {
             return "using(values"
                 + Environment.NewLine
@@ -575,7 +589,8 @@ namespace DapperAid
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>「merge into TABLE using ... when matched then update ... when not matched then insert ...」などのUpsert静的SQL。一度に挿入更新する行数がMultiInsertRowsPerQueryを超過しないよう分割して返されます</returns>
         /// <remarks>サブクラスによりオーバーライドされ、DBMSに応じたSQL文が生成されます。基底クラスではSQL2003に準じたmerge文を生成します。</remarks>
-        public virtual IEnumerable<string> BuildMultiUpsert<T>(IEnumerable<T> records, Expression<Func<T, dynamic>> insertTargetColumns = null, Expression<Func<T, dynamic>> updateTargetColumns = null)
+        public virtual IEnumerable<string> BuildMultiUpsert<T>(IEnumerable<T> records, Expression<Func<T, dynamic>>? insertTargetColumns = null, Expression<Func<T, dynamic>>? updateTargetColumns = null)
+            where T : notnull
         {
             var tableInfo = GetTableInfo<T>();
             // values生成対象カラム（insert対象カラムのうちSQLリテラルによる初期化を行わないカラム）を把握
@@ -601,6 +616,7 @@ namespace DapperAid
         /// <returns>「using(values (...), (...), ... ) as s(カラム名, ...)」などといった静的using句</returns>
         /// <remarks>サブクラスによりオーバーライドされ、DBMSに応じたusing句が返されます。（ソーステーブルは別名sとすること）</remarks>
         protected virtual IEnumerable<string> BuildMultiUpsertUsingClause<T>(IEnumerable<T> records, IReadOnlyList<TableInfo.Column> columns)
+            where T : notnull
         {
             var postfix = Environment.NewLine + ") as s(" + string.Join(",", columns.Select(c => c.Name)) + ")";
 
@@ -636,7 +652,8 @@ namespace DapperAid
         /// <param name="insertTargetColumns">insert実行時の値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2, t.Col3 }</c>」</param>
         /// <param name="updateTargetColumns">update実行時の値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col2, t.Col3 }</c>」</param>
         /// <returns>「on (t.KEY = s.KEY) when matched then update ... when not matched then insert ...」などといったSQL</returns>
-        protected string BuildUpsertCond<T>(Expression<Func<T, dynamic>> insertTargetColumns, Expression<Func<T, dynamic>> updateTargetColumns)
+        protected string BuildUpsertCond<T>(Expression<Func<T, dynamic>>? insertTargetColumns, Expression<Func<T, dynamic>>? updateTargetColumns)
+            where T : notnull
         {
             var tableInfo = GetTableInfo<T>();
             var columns = (insertTargetColumns == null
@@ -674,7 +691,8 @@ namespace DapperAid
         /// beginning/columnValueTemplateにはDBMSに応じた適切な内容を設定すること。
         /// 具体的には、Postgres/SQLiteの場合「on conflict(KEY) do update set」「excluded.?」、MySQLの場合「on duplicate key update」「values(?)」、Oracle/SqlServer/DB2の場合「～ update set」「excluded.?」
         /// </remarks>
-        protected string BuildUpsertUpdateClause<T>(string beginning, string columnValueTemplate, Expression<Func<T, dynamic>> updateTargetColumns)
+        protected string BuildUpsertUpdateClause<T>(string beginning, string columnValueTemplate, Expression<Func<T, dynamic>>? updateTargetColumns)
+            where T : notnull
         {
             var tableInfo = GetTableInfo<T>();
             var updateColumns = (updateTargetColumns == null)
@@ -704,7 +722,8 @@ namespace DapperAid
         /// <param name="targetColumns">値更新対象カラムを限定する場合は、対象カラムを初期化子で指定するラムダ式。例：「<c>() => new Tbl1 { Col1 = 1, Col2 = 0 }</c>」「<c>t => new { t.Col1, t.Col2 }</c>」</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>「update [テーブル] set [カラム=設定値,...]」のSQL</returns>
-        public string BuildUpdate<T>(LambdaExpression targetColumns = null)
+        public string BuildUpdate<T>(LambdaExpression? targetColumns = null)
+            where T : notnull
         {
             var tableInfo = GetTableInfo<T>();
             var columns = (targetColumns == null)
@@ -731,6 +750,7 @@ namespace DapperAid
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>「update [テーブル] set [カラム=設定値,...]」のSQL</returns>
         public string BuildUpdate<T>(DynamicParameters parameters, Expression<Func<T>> values)
+            where T : notnull
         {
             var initExpr = (values.Body as MemberInitExpression);
             if (initExpr == null || initExpr.Bindings.Count == 0)
@@ -746,10 +766,11 @@ namespace DapperAid
                 if (sb.Length > 0) { sb.Append(", "); }
 
                 // DapperAid固有のSQL条件式記述用メソッドで値指定している場合は、SQL条件式生成メソッドを呼び出してSQLを組み立てる
-                var valueSql = TryBindSqlExpr(parameters, null, (member as MemberAssignment).Expression, false);
+                var expression = (member as MemberAssignment)!.Expression;
+                var valueSql = TryBindSqlExpr(parameters, null, expression, false);
                 if (valueSql == null)
                 {   // そうでなければ更新値を取り出してバインド
-                    valueSql = AddParameter(parameters, member.Member.Name, ExpressionHelper.EvaluateValue((member as MemberAssignment).Expression));
+                    valueSql = AddParameter(parameters, member.Member.Name, ExpressionHelper.EvaluateValue(expression));
                 }
                 sb.Append(column.Name)
                     .Append("=")
@@ -764,6 +785,7 @@ namespace DapperAid
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>「delete from [テーブル]」のSQL文</returns>
         public string BuildDelete<T>()
+            where T : notnull
         {
             var tableInfo = GetTableInfo<T>();
             return "delete from " + tableInfo.Name;
@@ -775,6 +797,7 @@ namespace DapperAid
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>「truncate table [テーブル]」のSQL</returns>
         public virtual string BuildTruncate<T>()
+            where T : notnull
         {
             var tableInfo = GetTableInfo<T>();
             return "truncate table " + tableInfo.Name;
@@ -788,7 +811,7 @@ namespace DapperAid
         /// <param name="data">Where条件対象カラムに値が設定されているオブジェクト</param>
         /// <param name="columnWhere">Where条件対象となるカラムであればtrueを返すラムダ式。例：PK項目を条件とする場合「c => (c.IsKey)」</param>
         /// <returns>SQL文のWhere句</returns>
-        public string BuildWhere<T>(T data, Func<TableInfo.Column, bool> columnWhere)
+        public string BuildWhere<T>(T? data, Func<TableInfo.Column, bool> columnWhere)
         {
             var tableInfo = GetTableInfo<T>();
             var columns = tableInfo.Columns.Where(columnWhere);
@@ -825,10 +848,12 @@ namespace DapperAid
         /// <returns>SQL文のWhere句</returns>
         /// <remarks>parametersにnullが指定されている場合は、パラメータバインドは行わず静的なSQLを生成します。</remarks>
         public string BuildWhere<T>(DynamicParameters parameters, Expression<Func<T>> keyValues)
+            where T : notnull
         {
             var tableInfo = GetTableInfo<T>();
             var sb = new StringBuilder();
-            Action<TableInfo.Column, object> bindWhere = (column, value) =>
+            // ローカルメソッド：where/and条件を組み立てる
+            void bindWhere(TableInfo.Column column, object? value)
             {
                 sb.Append(sb.Length == 0 ? " where " : " and ");
                 if (IsNull(value))
@@ -845,9 +870,8 @@ namespace DapperAid
 
             var memberExpr = (keyValues.Body as MemberExpression);
             var initExpr = (keyValues.Body as MemberInitExpression);
-            if (memberExpr != null)
+            if (memberExpr != null && ExpressionHelper.EvaluateValue(memberExpr) is T data)
             {   // 特例対応：ラムダの戻り値として指定されたオブジェクトをもとに楽観排他更新のWhere条件式を生成
-                var data = (T)ExpressionHelper.EvaluateValue(memberExpr);
                 foreach (var column in tableInfo.Columns.Where(c => c.IsKey || c.ConcurrencyCheck))
                 {
                     var value = MemberAccessor.GetValue(data, column.PropertyInfo);
@@ -859,7 +883,8 @@ namespace DapperAid
                 foreach (var member in initExpr.Bindings)
                 {
                     var column = tableInfo.GetColumn(member.Member.Name);
-                    var sqlExprBindResult = TryBindSqlExpr(parameters, column, (member as MemberAssignment).Expression, false);
+                    var expression = (member as MemberAssignment)!.Expression;
+                    var sqlExprBindResult = TryBindSqlExpr(parameters, column, expression, false);
                     if (sqlExprBindResult != null)
                     {   // DapperAid固有のSQL条件式記述用メソッドで値指定している場合は、SQL条件式生成メソッドを呼び出してSQLを組み立てる
                         sb.Append(sb.Length == 0 ? " where " : " and ");
@@ -867,7 +892,7 @@ namespace DapperAid
                     }
                     else
                     {   // そうでなければ条件値をバインド
-                        var value = ExpressionHelper.EvaluateValue((member as MemberAssignment).Expression);
+                        var value = ExpressionHelper.EvaluateValue(expression);
                         bindWhere(column, value);
                     }
                 }
@@ -885,7 +910,8 @@ namespace DapperAid
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>生成されたWhere句（条件指定なしの場合は空文字）</returns>
         /// <remarks>parametersにnullが指定されている場合は、パラメータバインドは行わず静的なSQLを生成します。</remarks>
-        public string BuildWhere<T>(DynamicParameters parameters, Expression<Func<T, bool>> where)
+        public string BuildWhere<T>(DynamicParameters parameters, Expression<Func<T, bool>>? where)
+            where T : notnull
         {
             if (where == null)
             {
@@ -905,7 +931,7 @@ namespace DapperAid
         private string BuildWhere(DynamicParameters parameters, TableInfo tableInfo, Expression expression)
         {
             // ローカル関数相当：ExpressionがWhere条件となるカラムなら、そのカラム情報を返す
-            Func<Expression, TableInfo.Column> getIfOperandIsConditionColumn = (exp) =>
+            Func<Expression, TableInfo.Column?> getIfOperandIsConditionColumn = (exp) =>
             {
                 var me = ExpressionHelper.CastTo<MemberExpression>(exp);
                 if (me == null || me.Expression == null || me.Expression.NodeType != ExpressionType.Parameter)
@@ -925,17 +951,46 @@ namespace DapperAid
             if (binaryExpr == null)
             {   // 二項演算子以外の特殊な表現が指定されている場合の処理
 
+                // 三項演算子が指定されている場合の対処
+                if (ExpressionHelper.CastTo<ConditionalExpression>(expression) is ConditionalExpression condExpr)
+                {
+                    var cond = BuildWhere(parameters, tableInfo, condExpr.Test);
+                    if (cond == TrueLiteral) { return BuildWhere(parameters, tableInfo, condExpr.IfTrue); }
+                    if (cond == FalseLiteral) { return BuildWhere(parameters, tableInfo, condExpr.IfFalse); }
+                    var trueCond = BuildWhere(parameters, tableInfo, condExpr.IfTrue);
+                    var falseCond = BuildWhere(parameters, tableInfo, condExpr.IfFalse);
+
+                    if (trueCond == TrueLiteral)
+                    {
+                        if (falseCond == TrueLiteral) { return TrueLiteral; }
+                        if (falseCond == FalseLiteral) { return cond; }
+                        return "(" + cond + " or " + falseCond + ")";
+                    }
+                    else if (trueCond == FalseLiteral)
+                    {
+                        if (falseCond == TrueLiteral) { return "not(" + cond + ")"; }
+                        if (falseCond == FalseLiteral) { return FalseLiteral; }
+                        return "not(" + cond + ") and " + falseCond;
+                    }
+                    else
+                    {
+                        if (falseCond == TrueLiteral) { return "(not(" + cond + ") or " + trueCond + ")"; }
+                        if (falseCond == FalseLiteral) { return cond + " and " + trueCond; }
+                        return "((" + cond + " and " + trueCond + ") or (not(" + cond + ") and " + falseCond + "))";
+                    }
+                }
+
                 // 「!」NOT指定かどうか/bool型のプロパティが指定されているかを判定
                 var unaryExpr = ExpressionHelper.CastTo<UnaryExpression>(expression);
                 var isNot = (unaryExpr != null && unaryExpr.NodeType == ExpressionType.Not);
-                var column = getIfOperandIsConditionColumn(isNot ? unaryExpr.Operand : expression);
+                var column = getIfOperandIsConditionColumn(isNot ? unaryExpr!.Operand : expression);
                 if (column != null && column.PropertyInfo.PropertyType == typeof(bool))
                 {   // boolカラム値の条件として組み立てる
                     return column.Name + "=" + (isNot ? FalseLiteral : TrueLiteral);
                 }
                 if (isNot)
                 {   // NOT条件として組み立てる
-                    return "not(" + BuildWhere(parameters, tableInfo, unaryExpr.Operand) + ")";
+                    return "not(" + BuildWhere(parameters, tableInfo, unaryExpr!.Operand) + ")";
                 }
 
                 // DapperAid固有のSQL条件式記述用メソッドで式木を記述している場合は、SQL条件式生成メソッドを呼び出してSQLを組み立てる
@@ -959,6 +1014,7 @@ namespace DapperAid
             // And/Or条件の解釈
             switch (binaryExpr.NodeType)
             {
+                case ExpressionType.And:
                 case ExpressionType.AndAlso:
                     var andLeft = BuildWhere(parameters, tableInfo, binaryExpr.Left);
                     if (andLeft == FalseLiteral)
@@ -970,6 +1026,7 @@ namespace DapperAid
                     return (andLeft == TrueLiteral) ? andRight
                         : (andRight == TrueLiteral) ? andLeft
                                                     : andLeft + " and " + andRight;
+                case ExpressionType.Or:
                 case ExpressionType.OrElse:
                     var orLeft = BuildWhere(parameters, tableInfo, binaryExpr.Left);
                     if (orLeft == TrueLiteral)
@@ -1022,8 +1079,8 @@ namespace DapperAid
                 return leftMember.Name + op + rightMember.Name;
             }
 
-            var condColumn = leftMember ?? rightMember;
-            var valueExpression = ExpressionHelper.CastTo<Expression>(condColumn == leftMember ? binaryExpr.Right : binaryExpr.Left);
+            var condColumn = leftMember ?? rightMember!;
+            var valueExpression = ExpressionHelper.CastTo<Expression>(condColumn == leftMember ? binaryExpr.Right : binaryExpr.Left)!;
 
             // DapperAid固有のSQL条件式記述用メソッドで値指定している場合は、SQL条件式生成メソッドを呼び出してSQLを組み立てる
             {

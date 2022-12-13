@@ -97,7 +97,7 @@ namespace DapperAidTest.Misc
 
             public string Data { get; set; }
 
-            [UpdateSql("CURRENT_TIMESTAMP"), ConcurrencyCheck]
+            [UpdateValue("CURRENT_TIMESTAMP"), ConcurrencyCheck]
             public DateTime? UpdatedAt { get; set; }
 
             [ConcurrencyCheck]

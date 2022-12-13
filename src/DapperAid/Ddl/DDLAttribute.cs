@@ -43,7 +43,8 @@ namespace DapperAid.Ddl
         /// <para>(4)PK指定    ：[Key]属性が指定されたすべてのプロパティをPrimaryKeyとして取り扱う</para>
         /// <para>(5)FK指定等  ：クラスに対し指定された[Ddl("制約各種(foreignKey/unique等)")]属性の内容</para>
         /// </remarks>
-        public static string GenerateCreateSQL<T>(QueryBuilder queryBuilder = null)
+        public static string GenerateCreateSQL<T>(QueryBuilder? queryBuilder = null)
+            where T : notnull
         {
             var builder = (queryBuilder ?? QueryBuilder.DefaultInstance);
             var table = builder.GetTableInfo<T>();
@@ -102,7 +103,8 @@ namespace DapperAid.Ddl
         /// <para>・基本情報（テーブルにマッピングされたクラス名、取得元/更新先テーブル、SelectSQL生成例）</para>
         /// <para>・各列の情報（表示名, プロパティ名, プロパティ型, Keyか, DBカラム名, DB型, Insert設定値, Update設定値)</para>
         /// </remarks>
-        public static string GenerateTableDefTSV<T>(QueryBuilder queryBuilder = null)
+        public static string GenerateTableDefTSV<T>(QueryBuilder? queryBuilder = null)
+            where T : notnull
         {
             var builder = (queryBuilder ?? QueryBuilder.DefaultInstance);
             var table = builder.GetTableInfo<T>();

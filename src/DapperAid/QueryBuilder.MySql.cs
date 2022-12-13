@@ -104,7 +104,7 @@ namespace DapperAid
             /// <param name="updateTargetColumns">update実行時の値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col2, t.Col3 }</c>」</param>
             /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
             /// <returns>MySQLでは「insert into .... on duplicate key update ....」のSQL</returns>
-            public override string BuildUpsert<T>(Expression<Func<T, dynamic>> insertTargetColumns = null, Expression<Func<T, dynamic>> updateTargetColumns = null)
+            public override string BuildUpsert<T>(Expression<Func<T, dynamic>>? insertTargetColumns = null, Expression<Func<T, dynamic>>? updateTargetColumns = null)
             {
                 // on duplicate句を生成。insertSQLの末尾に付加する
                 var postfix = BuildUpsertUpdateClause(" on duplicate key update", "values(?)", updateTargetColumns);
@@ -118,7 +118,7 @@ namespace DapperAid
             /// <param name="updateTargetColumns">update実行時の値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col2, t.Col3 }</c>」</param>
             /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
             /// <returns>MySQLでは「insert into .... on duplicate key update ....」の静的SQL。一度に挿入する行数がMultiInsertRowsPerQueryを超過しないよう分割して返されます</returns>
-            public override IEnumerable<string> BuildMultiUpsert<T>(IEnumerable<T> records, Expression<Func<T, dynamic>> insertTargetColumns = null, Expression<Func<T, dynamic>> updateTargetColumns = null)
+            public override IEnumerable<string> BuildMultiUpsert<T>(IEnumerable<T> records, Expression<Func<T, dynamic>>? insertTargetColumns = null, Expression<Func<T, dynamic>>? updateTargetColumns = null)
             {
                 // on duplicate句を生成。一括insertSQLの末尾に付加する
                 var postfix = BuildUpsertUpdateClause(" on duplicate key update", "values(?)", updateTargetColumns);

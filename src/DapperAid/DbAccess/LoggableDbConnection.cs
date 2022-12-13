@@ -2,7 +2,11 @@
 using System.Data;
 using System.Data.Common;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 using System.Threading.Tasks;
+
+#pragma warning disable CA2200 // スタックトレースを切ることについては警告としない
 
 namespace DapperAid.DbAccess
 {
@@ -21,10 +25,10 @@ namespace DapperAid.DbAccess
         private readonly DbConnection _innerConnection;
 
         /// <summary>エラーログ出力メソッド：引数＝例外オブジェクト, 実行したDbCommand(DbCommandではない場合はnull)</summary>
-        public Action<Exception, DbCommand> ErrorLogger { get; set; }
+        public Action<Exception, DbCommand?> ErrorLogger { get; set; }
 
         /// <summary>トレースログ出力メソッド：引数＝結果概要テキスト(例:「HasResults」「Value=xxx」「Commit」), 実行所要時間mSec, 実行したDbCommand(DbCommandではない場合はnull)</summary>
-        public Action<string, long, DbCommand> TraceLogger { get; set; }
+        public Action<string, long, DbCommand?>? TraceLogger { get; set; }
 
         #endregion
 
@@ -35,7 +39,7 @@ namespace DapperAid.DbAccess
         /// <param name="connection">実際のDB操作に使用するDbConnection</param>
         /// <param name="errorLogger">エラーログ出力メソッド：引数＝例外オブジェクト, 実行したDbCommand(DbCommandではない場合はnull)</param>
         /// <param name="traceLogger">トレースログ出力メソッド：引数＝結果概要テキスト(例:「HasResults」「Value=xxx」「Commit」), 実行所要時間mSec, 実行したDbCommand(DbCommandではない場合はnull)</param>
-        public LoggableDbConnection(DbConnection connection, Action<Exception, DbCommand> errorLogger, Action<string, long, DbCommand> traceLogger = null)
+        public LoggableDbConnection(DbConnection connection, Action<Exception, DbCommand?> errorLogger, Action<string, long, DbCommand?>? traceLogger = null)
         {
             this._innerConnection = connection;
             this.ErrorLogger = errorLogger;
@@ -43,56 +47,36 @@ namespace DapperAid.DbAccess
         }
         #endregion
 
-        #region ログ出力 -------------------------------------------------------
-
-        /// <summary>
-        /// SQL実行エラーについてのログ出力メソッドを呼び出します。
-        /// </summary>
-        /// <param name="ex">例外オブジェクト</param>
-        /// <param name="command">実行したDbCommand(DbCommandではない場合はnull)</param>
-        private void ErrorLog(Exception ex, DbCommand command = null)
-        {
-            if (this.ErrorLogger != null) { this.ErrorLogger(ex, command); }
-        }
-        /// <summary>
-        /// SQL実行正常終了についてのログ出力メソッドを呼び出します。
-        /// </summary>
-        /// <param name="resultSummary">結果概要テキスト(例:「更新行数=xx」「Commit成功」)</param>
-        /// <param name="mSec">実行所要時間mSec</param>
-        /// <param name="command">実行したDbCommand(DbCommandではない場合はnull)</param>
-        private void TraceLog(string resultSummary, long mSec, DbCommand command = null)
-        {
-            if (this.TraceLogger != null) { this.TraceLogger(resultSummary, mSec, command); }
-        }
-
-        #endregion
-
         #region ログ出力機能追加のためのオーバーライド -------------------------
 
-        /// <summary>データベース接続を開きます。</summary>
+        /// <summary>データベース接続を開き、トレースログを出力します。</summary>
         public override void Open()
         {
             try
             {
+                var sw = Stopwatch.StartNew();
                 _innerConnection.Open();
+                this.TraceLogger?.Invoke("Open", sw.ElapsedMilliseconds, null);
             }
             catch (Exception ex)
             {   // エラーログを出力し、スタックトレースを切って再throw
-                this.ErrorLog(ex);
+                this.ErrorLogger?.Invoke(ex, null);
                 throw ex;
             }
         }
 
-        /// <summary>非同期でデータベース接続を開きます。</summary>
+        /// <summary>非同期でデータベース接続を開き、トレースログを出力します。</summary>
         public override async Task OpenAsync(System.Threading.CancellationToken cancellationToken)
         {
             try
             {
+                var sw = Stopwatch.StartNew();
                 await this._innerConnection.OpenAsync(cancellationToken);
+                this.TraceLogger?.Invoke("OpenAsync", sw.ElapsedMilliseconds, null);
             }
             catch (Exception ex)
             {   // エラーログを出力し、スタックトレースを切って再throw
-                this.ErrorLog(ex);
+                this.ErrorLogger?.Invoke(ex, null);
                 throw ex;
             }
         }
@@ -106,12 +90,12 @@ namespace DapperAid.DbAccess
             {
                 var sw = Stopwatch.StartNew();
                 DbTransaction ret = new Transaction(this, _innerConnection.BeginTransaction());
-                this.TraceLog("BeginTransaction", sw.ElapsedMilliseconds);
+                this.TraceLogger?.Invoke("BeginTransaction", sw.ElapsedMilliseconds, null);
                 return ret;
             }
             catch (Exception ex)
             {   // エラーログを出力し、スタックトレースを切って再throw
-                this.ErrorLog(ex);
+                this.ErrorLogger?.Invoke(ex, null);
                 throw ex;
             }
         }
@@ -133,18 +117,54 @@ namespace DapperAid.DbAccess
             }
             catch (Exception ex)
             {
-                this.ErrorLog(ex);
+                this.ErrorLogger?.Invoke(ex, null);
             }
             base.Dispose(disposing);
         }
+
+#if NET // NET5未満では未対応の非同期メソッド
+        /// <summary>
+        /// ログ出力可能なDbTransactionオブジェクトを非同期で生成してトランザクションを開始し、トレースログを出力します。
+        /// </summary>
+        protected override async ValueTask<DbTransaction> BeginDbTransactionAsync(IsolationLevel isolationLevel, CancellationToken cancellationToken)
+        {
+            try
+            {
+                var sw = Stopwatch.StartNew();
+                DbTransaction ret = new Transaction(this, await _innerConnection.BeginTransactionAsync(isolationLevel, cancellationToken));
+                this.TraceLogger?.Invoke("BeginTransactionAsync", sw.ElapsedMilliseconds, null);
+                return ret;
+            }
+            catch (Exception ex)
+            {   // エラーログを出力し、スタックトレースを切って再throw
+                this.ErrorLogger?.Invoke(ex, null);
+                throw ex;
+            }
+        }
+
+        /// <summary>非同期オブジェクト破棄</summary>
+        public override async ValueTask DisposeAsync()
+        {
+            try
+            {
+                await _innerConnection.DisposeAsync();
+            }
+            catch (Exception ex)
+            {
+                this.ErrorLogger?.Invoke(ex, null);
+            }
+            await base.DisposeAsync();
+        }
+#endif
         #endregion
 
         #region ラッピングのためのオーバーライド -------------------------------
-        // 以下のオーバーライドについてはわざわざドキュメントコメントを書かない。コンパイルの警告(CS1591)も抑止する
-#pragma warning disable 1591
+#pragma warning disable 1591 // 以下のオーバーライドについてはわざわざドキュメントコメントを書かない。コンパイルの警告(CS1591)も抑止する
 
         // 以下、実装必須プロパティ/メソッド
+        [AllowNull]
         public override string ConnectionString { get { return _innerConnection.ConnectionString; } set { _innerConnection.ConnectionString = value; } }
+
         public override string Database { get { return _innerConnection.Database; } }
         public override string DataSource { get { return _innerConnection.DataSource; } }
         public override string ServerVersion { get { return _innerConnection.ServerVersion; } }
@@ -165,13 +185,13 @@ namespace DapperAid.DbAccess
         {
             get { return _innerConnection.ConnectionTimeout; }
         }
-        public override event StateChangeEventHandler StateChange
+        public override event StateChangeEventHandler? StateChange
         {
             add { _innerConnection.StateChange += value; }
             remove { _innerConnection.StateChange -= value; }
         }
 
-        public override void EnlistTransaction(System.Transactions.Transaction transaction)
+        public override void EnlistTransaction(System.Transactions.Transaction? transaction)
         {
             _innerConnection.EnlistTransaction(transaction);
         }
@@ -183,7 +203,7 @@ namespace DapperAid.DbAccess
         {
             return _innerConnection.GetSchema(collectionName);
         }
-        public override DataTable GetSchema(string collectionName, string[] restrictionValues)
+        public override DataTable GetSchema(string collectionName, string?[] restrictionValues)
         {
             return _innerConnection.GetSchema(collectionName, restrictionValues);
         }
@@ -191,6 +211,21 @@ namespace DapperAid.DbAccess
         //{
         //    _innerConnection.OnStateChange(stateChange);
         //} // ※StateChangeイベントの発火はinnerConnection側に任せるためオーバーライド不要
+
+#if NET // NET5未満では未対応の非同期メソッド
+        public override Task ChangeDatabaseAsync(string databaseName, CancellationToken cancellationToken = default)
+        {
+            return _innerConnection.ChangeDatabaseAsync(databaseName, cancellationToken);
+        }
+        public override Task CloseAsync()
+        {
+            return _innerConnection.CloseAsync();
+        }
+        // public override Task<DataTable> GetSchemaAsync(string collectionName, string?[] restrictionValues, CancellationToken cancellationToken = default)
+        // {
+        //     return _innerConnection.GetSchemaAsync(collectionName, restrictionValues, cancellationToken);
+        // } // ※NETSTANDARD2.1未対応かつ実装省略しても実害がないためコメントアウトとしておく
+#endif
 
 #pragma warning restore 1591
         #endregion
@@ -237,12 +272,12 @@ namespace DapperAid.DbAccess
                 {
                     var sw = Stopwatch.StartNew();
                     _innerTransaction.Commit();
-                    _conn.TraceLog("Commit", sw.ElapsedMilliseconds);
+                    _conn.TraceLogger?.Invoke("Commit", sw.ElapsedMilliseconds, null);
                     _isCompleted = true;
                 }
                 catch (Exception ex)
                 {   // エラーログを出力し、スタックトレースを切って再throw
-                    _conn.ErrorLog(ex);
+                    _conn.ErrorLogger?.Invoke(ex, null);
                     throw ex;
                 }
             }
@@ -256,12 +291,12 @@ namespace DapperAid.DbAccess
                 {
                     var sw = Stopwatch.StartNew();
                     _innerTransaction.Rollback();
-                    _conn.TraceLog("Rollback", sw.ElapsedMilliseconds);
+                    _conn.TraceLogger?.Invoke("Rollback", sw.ElapsedMilliseconds, null);
                     _isCompleted = true;
                 }
                 catch (Exception ex)
                 {   // エラーログを出力し、スタックトレースを切って再throw
-                    _conn.ErrorLog(ex);
+                    _conn.ErrorLogger?.Invoke(ex, null);
                     throw ex;
                 }
             }
@@ -280,16 +315,81 @@ namespace DapperAid.DbAccess
                     {
                         // コミット/ロールバックが明示的に行われていない場合は、Disposeにより暗黙的にRollbackが行われる。
                         // コミットし忘れをログから調査できるようにする意図でトレースログ出力する。
-                        _conn.TraceLog("ImplicitRollback", sw.ElapsedMilliseconds);
+                        _conn.TraceLogger?.Invoke("ImplicitRollback", sw.ElapsedMilliseconds, null);
                         _isCompleted = true;
                     }
                 }
                 catch (Exception ex)
                 {
-                    _conn.ErrorLog(ex);
+                    _conn.ErrorLogger?.Invoke(ex, null);
                 }
                 base.Dispose(disposing);
             }
+
+#if NET // NET5未満では未対応の非同期メソッド
+            /// <summary>
+            /// 非同期でコミットし、トレースログを出力します。
+            /// </summary>
+            public override async Task CommitAsync(CancellationToken cancellationToken = default)
+            {
+                try
+                {
+                    var sw = Stopwatch.StartNew();
+                    await _innerTransaction.CommitAsync(cancellationToken);
+                    _conn.TraceLogger?.Invoke("CommitAsync", sw.ElapsedMilliseconds, null);
+                    _isCompleted = true;
+                }
+                catch (Exception ex)
+                {   // エラーログを出力し、スタックトレースを切って再throw
+                    _conn.ErrorLogger?.Invoke(ex, null);
+                    throw ex;
+                }
+            }
+
+            /// <summary>
+            /// 非同期でロールバックし、トレースログを出力します。
+            /// </summary>
+            public override async Task RollbackAsync(CancellationToken cancellationToken = default)
+            {
+                try
+                {
+                    var sw = Stopwatch.StartNew();
+                    await _innerTransaction.RollbackAsync(cancellationToken);
+                    _conn.TraceLogger?.Invoke("RollbackAsync", sw.ElapsedMilliseconds, null);
+                    _isCompleted = true;
+                }
+                catch (Exception ex)
+                {   // エラーログを出力し、スタックトレースを切って再throw
+                    _conn.ErrorLogger?.Invoke(ex, null);
+                    throw ex;
+                }
+            }
+
+            /// <summary>
+            /// オブジェクトを非同期で破棄する際、
+            /// トランザクションがCommitもRollbackもされていない場合は暗黙ロールバックについてのトレースログを出力します。
+            /// </summary>
+            public override async ValueTask DisposeAsync()
+            {
+                try
+                {
+                    var sw = (_isCompleted ? null : Stopwatch.StartNew());
+                    await _innerTransaction.DisposeAsync();
+                    if (sw != null)
+                    {
+                        // コミット/ロールバックが明示的に行われていない場合は、Disposeにより暗黙的にRollbackが行われる。
+                        // コミットし忘れをログから調査できるようにする意図でトレースログ出力する。
+                        _conn.TraceLogger?.Invoke("ImplicitAsyncRollback", sw.ElapsedMilliseconds, null);
+                        _isCompleted = true;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _conn.ErrorLogger?.Invoke(ex, null);
+                }
+                await base.DisposeAsync();
+            }
+#endif
         }
 
         /// <summary>
@@ -304,7 +404,7 @@ namespace DapperAid.DbAccess
             private readonly DbCommand _innerCommand;
 
             /// <summary>DbCommandに対し指定されたDbTransaction</summary>
-            private DbTransaction _tran;
+            private DbTransaction? _tran;
 
             /// <summary>
             /// インスタンスを初期化します。
@@ -317,11 +417,13 @@ namespace DapperAid.DbAccess
 
             // 以下、オーバーライド実装各種 ------------------------------------
 
+            [AllowNull]
             public override string CommandText { get { return _innerCommand.CommandText; } set { _innerCommand.CommandText = value; } }
+
             public override int CommandTimeout { get { return _innerCommand.CommandTimeout; } set { _innerCommand.CommandTimeout = value; } }
             public override CommandType CommandType { get { return _innerCommand.CommandType; } set { _innerCommand.CommandType = value; } }
 
-            protected override DbConnection DbConnection
+            protected override DbConnection? DbConnection
             {   // コネクションは変更不可として取り扱う
                 get { return _innerCommand.Connection; }
                 set { throw new InvalidOperationException(); }
@@ -329,7 +431,7 @@ namespace DapperAid.DbAccess
 
             protected override DbParameterCollection DbParameterCollection { get { return _innerCommand.Parameters; } }
 
-            protected override DbTransaction DbTransaction
+            protected override DbTransaction? DbTransaction
             {
                 get { return _tran; }
                 set
@@ -361,12 +463,12 @@ namespace DapperAid.DbAccess
                 {
                     var sw = Stopwatch.StartNew();
                     var ret = _innerCommand.ExecuteReader(behavior);
-                    _conn.TraceLog((ret.HasRows ? "HasResults" : "NoResult"), sw.ElapsedMilliseconds, _innerCommand);
+                    _conn.TraceLogger?.Invoke((ret.HasRows ? "HasResults" : "NoResult"), sw.ElapsedMilliseconds, _innerCommand);
                     return ret;
                 }
                 catch (Exception ex)
                 {   // エラーログを出力し、スタックトレースを切って再throw
-                    _conn.ErrorLog(ex, this);
+                    _conn.ErrorLogger?.Invoke(ex, this);
                     throw ex;
                 }
             }
@@ -380,12 +482,12 @@ namespace DapperAid.DbAccess
                 {
                     var sw = Stopwatch.StartNew();
                     var ret = await _innerCommand.ExecuteReaderAsync(behavior, cancellationToken);
-                    _conn.TraceLog((ret.HasRows ? "*HasResults" : "*NoResult"), sw.ElapsedMilliseconds, _innerCommand);
+                    _conn.TraceLogger?.Invoke((ret.HasRows ? "*HasResults" : "*NoResult"), sw.ElapsedMilliseconds, _innerCommand);
                     return ret;
                 }
                 catch (Exception ex)
                 {   // エラーログを出力し、スタックトレースを切って再throw
-                    _conn.ErrorLog(ex, this);
+                    _conn.ErrorLogger?.Invoke(ex, this);
                     throw ex;
                 }
             }
@@ -399,12 +501,12 @@ namespace DapperAid.DbAccess
                 {
                     var sw = Stopwatch.StartNew();
                     var ret = _innerCommand.ExecuteNonQuery();
-                    _conn.TraceLog("Affected=" + ret.ToString(), sw.ElapsedMilliseconds, _innerCommand);
+                    _conn.TraceLogger?.Invoke("Affected=" + ret.ToString(), sw.ElapsedMilliseconds, _innerCommand);
                     return ret;
                 }
                 catch (Exception ex)
                 {   // エラーログを出力し、スタックトレースを切って再throw
-                    _conn.ErrorLog(ex, this);
+                    _conn.ErrorLogger?.Invoke(ex, this);
                     throw ex;
                 }
             }
@@ -418,12 +520,12 @@ namespace DapperAid.DbAccess
                 {
                     var sw = Stopwatch.StartNew();
                     var ret = await _innerCommand.ExecuteNonQueryAsync(cancellationToken);
-                    _conn.TraceLog("*Affected=" + ret.ToString(), sw.ElapsedMilliseconds, _innerCommand);
+                    _conn.TraceLogger?.Invoke("*Affected=" + ret.ToString(), sw.ElapsedMilliseconds, _innerCommand);
                     return ret;
                 }
                 catch (Exception ex)
                 {   // エラーログを出力し、スタックトレースを切って再throw
-                    _conn.ErrorLog(ex, this);
+                    _conn.ErrorLogger?.Invoke(ex, this);
                     throw ex;
                 }
             }
@@ -431,18 +533,18 @@ namespace DapperAid.DbAccess
             /// <summary>
             /// コマンドを実行します。実行結果トレースログも出力します。
             /// </summary>
-            public override object ExecuteScalar()
+            public override object? ExecuteScalar()
             {
                 try
                 {
                     var sw = Stopwatch.StartNew();
                     var ret = _innerCommand.ExecuteScalar();
-                    _conn.TraceLog("Value=" + (ret != null ? ret.ToString() : "null"), sw.ElapsedMilliseconds, _innerCommand);
+                    _conn.TraceLogger?.Invoke("Value=" + (ret != null ? ret.ToString() : "null"), sw.ElapsedMilliseconds, _innerCommand);
                     return ret;
                 }
                 catch (Exception ex)
                 {   // エラーログを出力し、スタックトレースを切って再throw
-                    _conn.ErrorLog(ex, this);
+                    _conn.ErrorLogger?.Invoke(ex, this);
                     throw ex;
                 }
             }
@@ -450,18 +552,18 @@ namespace DapperAid.DbAccess
             /// <summary>
             /// 非同期でコマンドを実行します。実行結果トレースログも出力します。
             /// </summary>
-            public override async Task<object> ExecuteScalarAsync(System.Threading.CancellationToken cancellationToken)
+            public override async Task<object?> ExecuteScalarAsync(System.Threading.CancellationToken cancellationToken)
             {
                 try
                 {
                     var sw = Stopwatch.StartNew();
                     var ret = await _innerCommand.ExecuteScalarAsync(cancellationToken);
-                    _conn.TraceLog("*Value=" + (ret != null ? ret.ToString() : "null"), sw.ElapsedMilliseconds, _innerCommand);
+                    _conn.TraceLogger?.Invoke("*Value=" + (ret != null ? ret.ToString() : "null"), sw.ElapsedMilliseconds, _innerCommand);
                     return ret;
                 }
                 catch (Exception ex)
                 {   // エラーログを出力し、スタックトレースを切って再throw
-                    _conn.ErrorLog(ex, this);
+                    _conn.ErrorLogger?.Invoke(ex, this);
                     throw ex;
                 }
             }
@@ -480,7 +582,7 @@ namespace DapperAid.DbAccess
                 }
                 catch (Exception ex)
                 {
-                    _conn.ErrorLog(ex);
+                    _conn.ErrorLogger?.Invoke(ex, null);
                 }
                 base.Dispose(disposing);
             }

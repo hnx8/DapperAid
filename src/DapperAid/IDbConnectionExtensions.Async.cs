@@ -18,7 +18,8 @@ namespace DapperAid
         /// <param name="timeout">タイムアウト時間</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>レコード数</returns>
-        public static Task<ulong> CountAsync<T>(this IDbConnection connection, Expression<Func<T, bool>> where = null, int? timeout = null)
+        public static Task<ulong> CountAsync<T>(this IDbConnection connection, Expression<Func<T, bool>>? where = null, int? timeout = null)
+            where T : notnull
         {
             return new QueryRunner(connection, timeout).CountAsync(where);
         }
@@ -33,7 +34,8 @@ namespace DapperAid
         /// <param name="timeout">タイムアウト時間</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>取得したレコード（１件、レコード不存在の場合はnull）</returns>
-        public static Task<T> SelectAsync<T>(this IDbConnection connection, Expression<Func<T>> keyValues, Expression<Func<T, dynamic>> targetColumns = null, string otherClauses = null, int? timeout = null)
+        public static Task<T?> SelectAsync<T>(this IDbConnection connection, Expression<Func<T>> keyValues, Expression<Func<T, dynamic>>? targetColumns = null, string? otherClauses = null, int? timeout = null)
+            where T : notnull
         {
             return new QueryRunner(connection, timeout).SelectAsync(keyValues, targetColumns, otherClauses);
         }
@@ -47,7 +49,8 @@ namespace DapperAid
         /// <param name="timeout">タイムアウト時間</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>レコードのリスト</returns>
-        public static Task<IReadOnlyList<T>> SelectAsync<T>(this IDbConnection connection, Expression<Func<T, bool>> where = null, string otherClauses = null, int? timeout = null)
+        public static Task<IReadOnlyList<T>> SelectAsync<T>(this IDbConnection connection, Expression<Func<T, bool>>? where = null, string? otherClauses = null, int? timeout = null)
+            where T : notnull
         {
             return new QueryRunner(connection, timeout).SelectAsync<T, T>(where, otherClauses);
         }
@@ -62,7 +65,8 @@ namespace DapperAid
         /// <param name="timeout">タイムアウト時間</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>レコードのリスト</returns>
-        public static Task<IReadOnlyList<T>> SelectAsync<T>(this IDbConnection connection, Expression<Func<T, bool>> where, Expression<Func<T, dynamic>> targetColumns, string otherClauses = null, int? timeout = null)
+        public static Task<IReadOnlyList<T>> SelectAsync<T>(this IDbConnection connection, Expression<Func<T, bool>>? where, Expression<Func<T, dynamic>>? targetColumns, string? otherClauses = null, int? timeout = null)
+            where T : notnull
         {
             return new QueryRunner(connection, timeout).SelectAsync(where, targetColumns, otherClauses);
         }
@@ -73,25 +77,13 @@ namespace DapperAid
         /// <param name="connection">DB接続</param>
         /// <param name="where">レコード絞り込み条件（絞り込みを行わない場合はnull）</param>
         /// <param name="otherClauses">SQL文の末尾に付加するforUpdate指定などがあれば、その内容</param>
+        /// <param name="timeout">タイムアウト時間</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>取得したレコード（１件、レコード不存在の場合はnull）</returns>
-        public static Task<T> FirstOrDefaultAsync<T>(this IDbConnection connection, Expression<Func<T, bool>> where = null, string otherClauses = null, int? timeout = null)
+        public static Task<T?> SelectFirstOrDefaultAsync<T>(this IDbConnection connection, Expression<Func<T, bool>>? where = null, string? otherClauses = null, int? timeout = null)
+            where T : notnull
         {
-            return new QueryRunner(connection, timeout).FirstOrDefaultAsync<T, T>(where, otherClauses);
-        }
-
-        /// <summary>
-        /// 指定されたテーブルからレコードを非同期で取得します。
-        /// </summary>
-        /// <param name="connection">DB接続</param>
-        /// <param name="where">レコード絞り込み条件（絞り込みを行わない場合はnull）</param>
-        /// <param name="otherClauses">SQL文の末尾に付加するforUpdate指定などがあれば、その内容</param>
-        /// <typeparam name="TFrom">取得対象テーブルにマッピングされた型</typeparam>
-        /// <typeparam name="TColumns">取得対象列にマッピングされた型</typeparam>
-        /// <returns>取得したレコード（１件、レコード不存在の場合はnull）</returns>
-        public static Task<TColumns> FirstOrDefaultAsync<TFrom, TColumns>(this IDbConnection connection, Expression<Func<TFrom, bool>> where = null, string otherClauses = null, int? timeout = null)
-        {
-            return new QueryRunner(connection, timeout).FirstOrDefaultAsync<TFrom, TColumns>(where, otherClauses);
+            return new QueryRunner(connection, timeout).SelectFirstOrDefaultAsync<T, T>(where, otherClauses);
         }
 
         /// <summary>
@@ -104,9 +96,28 @@ namespace DapperAid
         /// <typeparam name="TFrom">取得対象テーブルにマッピングされた型</typeparam>
         /// <typeparam name="TColumns">取得対象列にマッピングされた型</typeparam>
         /// <returns>レコードのリスト</returns>
-        public static Task<IReadOnlyList<TColumns>> SelectAsync<TFrom, TColumns>(this IDbConnection connection, Expression<Func<TFrom, bool>> where = null, string otherClauses = null, int? timeout = null)
+        public static Task<IReadOnlyList<TColumns>> SelectAsync<TFrom, TColumns>(this IDbConnection connection, Expression<Func<TFrom, bool>>? where = null, string? otherClauses = null, int? timeout = null)
+            where TFrom : notnull
+            where TColumns : notnull
         {
             return new QueryRunner(connection, timeout).SelectAsync<TFrom, TColumns>(where, otherClauses);
+        }
+
+        /// <summary>
+        /// 指定されたテーブルからレコードを非同期で取得します。
+        /// </summary>
+        /// <param name="connection">DB接続</param>
+        /// <param name="where">レコード絞り込み条件（絞り込みを行わない場合はnull）</param>
+        /// <param name="otherClauses">SQL文の末尾に付加するforUpdate指定などがあれば、その内容</param>
+        /// <param name="timeout">タイムアウト時間</param>
+        /// <typeparam name="TFrom">取得対象テーブルにマッピングされた型</typeparam>
+        /// <typeparam name="TColumns">取得対象列にマッピングされた型</typeparam>
+        /// <returns>取得したレコード（１件、レコード不存在の場合はnull）</returns>
+        public static Task<TColumns?> SelectFirstOrDefaultAsync<TFrom, TColumns>(this IDbConnection connection, Expression<Func<TFrom, bool>>? where = null, string? otherClauses = null, int? timeout = null)
+            where TFrom : notnull
+            where TColumns : notnull
+        {
+            return new QueryRunner(connection, timeout).SelectFirstOrDefaultAsync<TFrom, TColumns>(where, otherClauses);
         }
 
 
@@ -118,6 +129,7 @@ namespace DapperAid
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>挿入された行数</returns>
         public static Task<int> InsertAsync<T>(this IDbConnection connection, Expression<Func<T>> values)
+            where T : notnull
         {
             return new QueryRunner(connection, null).InsertAsync(values);
         }
@@ -131,6 +143,7 @@ namespace DapperAid
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>挿入された行数</returns>
         public static Task<int> InsertAsync<T>(this IDbConnection connection, Expression<Func<T>> values, int? timeout = null)
+            where T : notnull
         {
             return new QueryRunner(connection, timeout).InsertAsync(values);
         }
@@ -144,7 +157,8 @@ namespace DapperAid
         /// <param name="timeout">タイムアウト時間</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>挿入された行数</returns>
-        public static Task<int> InsertAsync<T>(this IDbConnection connection, T data, Expression<Func<T, dynamic>> targetColumns = null, int? timeout = null)
+        public static Task<int> InsertAsync<T>(this IDbConnection connection, T data, Expression<Func<T, dynamic>>? targetColumns = null, int? timeout = null)
+            where T : notnull
         {
             return new QueryRunner(connection, timeout).InsertAsync(data, targetColumns);
         }
@@ -161,7 +175,8 @@ namespace DapperAid
         /// <remarks>
         /// 自動連番に対応していないテーブル/DBMSでは例外がスローされます。
         /// </remarks>
-        public static Task<int> InsertAndRetrieveIdAsync<T>(this IDbConnection connection, T data, Expression<Func<T, dynamic>> targetColumns = null, int? timeout = null)
+        public static Task<int> InsertAndRetrieveIdAsync<T>(this IDbConnection connection, T data, Expression<Func<T, dynamic>>? targetColumns = null, int? timeout = null)
+            where T : notnull
         {
             return new QueryRunner(connection, timeout).InsertAndRetrieveIdAsync(data, targetColumns);
         }
@@ -178,6 +193,7 @@ namespace DapperAid
         /// <returns>挿入された行数</returns>
         [Obsolete("retrieveInsertedId引数なしのInsert/InsertAndRetrieveIdメソッドを使用してください。")]
         public static Task<int> InsertAsync<T>(this IDbConnection connection, T data, Expression<Func<T, dynamic>> targetColumns, bool retrieveInsertedId, int? timeout = null)
+            where T : notnull
         {
             return (retrieveInsertedId)
                 ? InsertAndRetrieveIdAsync(connection, data, targetColumns, timeout)
@@ -193,7 +209,8 @@ namespace DapperAid
         /// <param name="timeout">タイムアウト時間</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>挿入された行数</returns>
-        public static Task<int> InsertRowsAsync<T>(this IDbConnection connection, IEnumerable<T> records, Expression<Func<T, dynamic>> targetColumns = null, int? timeout = null)
+        public static Task<int> InsertRowsAsync<T>(this IDbConnection connection, IEnumerable<T> records, Expression<Func<T, dynamic>>? targetColumns = null, int? timeout = null)
+            where T : notnull
         {
             return new QueryRunner(connection, timeout).InsertRowsAsync(records, targetColumns);
         }
@@ -208,7 +225,8 @@ namespace DapperAid
         /// <param name="timeout">タイムアウト時間</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>挿入または更新された行数</returns>
-        public static Task<int> InsertOrUpdateAsync<T>(this IDbConnection connection, T data, Expression<Func<T, dynamic>> insertTargetColumns = null, Expression<Func<T, dynamic>> updateTargetColumns = null, int? timeout = null)
+        public static Task<int> InsertOrUpdateAsync<T>(this IDbConnection connection, T data, Expression<Func<T, dynamic>>? insertTargetColumns = null, Expression<Func<T, dynamic>>? updateTargetColumns = null, int? timeout = null)
+            where T : notnull
         {
             return new QueryRunner(connection, timeout).InsertOrUpdateAsync(data, insertTargetColumns, updateTargetColumns);
         }
@@ -223,7 +241,8 @@ namespace DapperAid
         /// <param name="timeout">タイムアウト時間</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>挿入または更新された行数</returns>
-        public static Task<int> InsertOrUpdateRowsAsync<T>(this IDbConnection connection, IEnumerable<T> records, Expression<Func<T, dynamic>> insertTargetColumns = null, Expression<Func<T, dynamic>> updateTargetColumns = null, int? timeout = null)
+        public static Task<int> InsertOrUpdateRowsAsync<T>(this IDbConnection connection, IEnumerable<T> records, Expression<Func<T, dynamic>>? insertTargetColumns = null, Expression<Func<T, dynamic>>? updateTargetColumns = null, int? timeout = null)
+            where T : notnull
         {
             return new QueryRunner(connection, timeout).InsertOrUpdateRowsAsync(records, insertTargetColumns, updateTargetColumns);
         }
@@ -239,6 +258,7 @@ namespace DapperAid
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>更新された行数</returns>
         public static Task<int> UpdateAsync<T>(this IDbConnection connection, Expression<Func<T>> values, Expression<Func<T, bool>> where, int? timeout = null)
+            where T : notnull
         {
             return new QueryRunner(connection, timeout).UpdateAsync(values, where);
         }
@@ -252,7 +272,8 @@ namespace DapperAid
         /// <param name="timeout">タイムアウト時間</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>更新された行数</returns>
-        public static Task<int> UpdateAsync<T>(this IDbConnection connection, T data, Expression<Func<T, dynamic>> targetColumns = null, int? timeout = null)
+        public static Task<int> UpdateAsync<T>(this IDbConnection connection, T data, Expression<Func<T, dynamic>>? targetColumns = null, int? timeout = null)
+            where T : notnull
         {
             return new QueryRunner(connection, timeout).UpdateAsync(data, targetColumns);
         }
@@ -266,6 +287,7 @@ namespace DapperAid
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>削除された行数</returns>
         public static Task<int> DeleteAsync<T>(this IDbConnection connection, Expression<Func<T, bool>> where)
+            where T : notnull
         {
             return new QueryRunner(connection, null).DeleteAsync(where);
         }
@@ -279,6 +301,7 @@ namespace DapperAid
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>削除された行数</returns>
         public static Task<int> DeleteAsync<T>(this IDbConnection connection, Expression<Func<T, bool>> where, int? timeout = null)
+            where T : notnull
         {
             return new QueryRunner(connection, timeout).DeleteAsync(where);
         }
@@ -291,6 +314,7 @@ namespace DapperAid
         /// <param name="timeout">タイムアウト時間</param>
         /// <returns>削除された行数</returns>
         public static Task<int> DeleteAsync<T>(this IDbConnection connection, T data, int? timeout = null)
+            where T : notnull
         {
             return new QueryRunner(connection, timeout).DeleteAsync(data);
         }
@@ -302,6 +326,7 @@ namespace DapperAid
         /// <param name="timeout">タイムアウト時間</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         public static Task TruncateAsync<T>(this IDbConnection connection, int? timeout = null)
+            where T : notnull
         {
             return new QueryRunner(connection, timeout).TruncateAsync<T>();
         }

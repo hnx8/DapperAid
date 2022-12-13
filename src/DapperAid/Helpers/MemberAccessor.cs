@@ -11,9 +11,11 @@ namespace DapperAid.Helpers
     public static class MemberAccessor
     {
         /// <summary>Getterのキャッシュ</summary>
-        private static readonly ConcurrentDictionary<MemberInfo, Delegate> getters = new ConcurrentDictionary<MemberInfo, Delegate>();
+        private static readonly ConcurrentDictionary<MemberInfo, Func<object, object>> getters = new ConcurrentDictionary<MemberInfo, Func<object, object>>();
+        /// <summary>静的なGetterのキャッシュ</summary>
+        private static readonly ConcurrentDictionary<MemberInfo, Func<object>> staticGetters = new ConcurrentDictionary<MemberInfo, Func<object>>();
         /// <summary>Setterのキャッシュ</summary>
-        private static readonly ConcurrentDictionary<MemberInfo, Delegate> setters = new ConcurrentDictionary<MemberInfo, Delegate>();
+        private static readonly ConcurrentDictionary<MemberInfo, Action<object, object>> setters = new ConcurrentDictionary<MemberInfo, Action<object, object>>();
 
         // ---------------------------------------------------------------------
 
@@ -25,11 +27,11 @@ namespace DapperAid.Helpers
         /// <returns>インスタンスプロパティの値</returns>
         public static object GetValue(object obj, PropertyInfo prop)
         {
-            Delegate getter;
-            if (!getters.TryGetValue(prop, out getter))
+            Func<object, object> getter;
+            if (!getters.TryGetValue(prop, out getter!))
             {
                 var target = Expression.Parameter(typeof(object), "target");
-                var fieldExp = Expression.Property(Expression.Convert(target, prop.DeclaringType), prop);
+                var fieldExp = Expression.Property(Expression.Convert(target, prop.DeclaringType!), prop);
                 getter = Expression.Lambda<Func<object, object>>(
                     Expression.Convert(fieldExp, typeof(object)), target
                 ).Compile();
@@ -46,15 +48,15 @@ namespace DapperAid.Helpers
         /// <param name="value">設定する値</param>
         public static void SetValue(object obj, PropertyInfo prop, object value)
         {
-            Delegate setter;
-            if (!setters.TryGetValue(prop, out setter))
+            Action<object, object> setter;
+            if (!setters.TryGetValue(prop, out setter!))
             {
                 var instance = Expression.Parameter(typeof(object), "instance");
                 var target = Expression.Parameter(typeof(object), "target");
                 setter = Expression.Lambda<Action<object, object>>(
                     Expression.Call(
-                        Expression.Convert(instance, prop.DeclaringType),
-                        prop.GetSetMethod(true),
+                        Expression.Convert(instance, prop.DeclaringType!),
+                        prop.GetSetMethod(true)!,
                         Expression.Convert(target, prop.PropertyType)
                         ),
                     new[] { instance, target }
@@ -72,11 +74,11 @@ namespace DapperAid.Helpers
         /// <returns>インスタンスフィールドの値</returns>
         public static object GetValue(object obj, FieldInfo field)
         {
-            Delegate getter;
-            if (!getters.TryGetValue(field, out getter))
+            Func<object, object> getter;
+            if (!getters.TryGetValue(field, out getter!))
             {
                 var target = Expression.Parameter(typeof(object), "target");
-                var fieldExp = Expression.Field(Expression.Convert(target, field.DeclaringType), field);
+                var fieldExp = Expression.Field(Expression.Convert(target, field.DeclaringType!), field);
                 getter = Expression.Lambda<Func<object, object>>(
                     Expression.Convert(fieldExp, typeof(object)), target
                 ).Compile();
@@ -92,14 +94,14 @@ namespace DapperAid.Helpers
         /// <returns>静的プロパティの値</returns>
         public static object GetStaticValue(PropertyInfo prop)
         {
-            Delegate getter;
-            if (!getters.TryGetValue(prop, out getter))
+            Func<object> getter;
+            if (!staticGetters.TryGetValue(prop, out getter!))
             {
                 var fieldExp = Expression.Property(null, prop);
                 getter = Expression.Lambda<Func<object>>(
                     Expression.Convert(fieldExp, typeof(object))
                 ).Compile();
-                getters[prop] = getter;
+                staticGetters[prop] = getter;
             }
             return (getter as Func<object>)();
         }
@@ -111,14 +113,14 @@ namespace DapperAid.Helpers
         /// <returns>静的フィールドの値</returns>
         public static object GetStaticValue(FieldInfo field)
         {
-            Delegate getter;
-            if (!getters.TryGetValue(field, out getter))
+            Func<object> getter;
+            if (!staticGetters.TryGetValue(field, out getter!))
             {
                 var fieldExp = Expression.Field(null, field);
                 getter = Expression.Lambda<Func<object>>(
                     Expression.Convert(fieldExp, typeof(object))
                 ).Compile();
-                getters[field] = getter;
+                staticGetters[field] = getter;
             }
             return (getter as Func<object>)();
         }

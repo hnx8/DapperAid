@@ -10,7 +10,7 @@ namespace DapperAid.Helpers
     public static class InstanceCreator
     {
         /// <summary>オブジェクト生成ファクトリのキャッシュ</summary>
-        private static readonly ConcurrentDictionary<Type, Delegate> factories = new ConcurrentDictionary<Type, Delegate>();
+        private static readonly ConcurrentDictionary<Type, Func<object>> factories = new ConcurrentDictionary<Type, Func<object>>();
 
         /// <summary>
         /// 引数で指定された型のオブジェクトを生成します。
@@ -18,15 +18,19 @@ namespace DapperAid.Helpers
         /// <typeparam name="T">戻り値の型</typeparam>
         /// <param name="t">生成するオブジェクトの型</param>
         /// <returns>生成されたオブジェクト</returns>
-        public static T Create<T>(Type t) where T : class
+        public static T Create<T>(Type t)
         {
-            Delegate factory;
-            if (!factories.TryGetValue(t, out factory))
+            Func<object> factory;
+            if (!factories.TryGetValue(t, out factory!))
             {
-                factory = Expression.Lambda<Func<object>>(Expression.New(t)).Compile();
+                factory = Expression.Lambda<Func<object>>(
+                    t.IsValueType
+                    ? Expression.Convert(Expression.Default(t), typeof(object))
+                    : Expression.New(t)
+                ).Compile();
                 factories[t] = factory;
             }
-            return (factory as Func<object>)() as T;
+            return (T)factory.Invoke();
         }
     }
 }

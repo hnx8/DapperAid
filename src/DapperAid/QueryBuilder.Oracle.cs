@@ -18,9 +18,9 @@ namespace DapperAid
             public override char ParameterMarker { get { return ':'; } }
 
             /// <summary>引数の値がnullに相当する値であればtrueを返します。Oracleは長さゼロの文字列もnullとみなします。</summary>
-            public override bool IsNull(object value)
+            public override bool IsNull(object? value)
             {
-                return (base.IsNull(value) || (value is string && string.IsNullOrEmpty(value as string)));
+                return (base.IsNull(value) || (value is string s && string.IsNullOrEmpty(s)));
             }
 
             /// <summary>INSERT実行時の自動連番値を取得するSQL句として、outパラメータへのreturning句を付加します。</summary>
@@ -37,7 +37,7 @@ namespace DapperAid
             /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
             /// <returns>「insert all into [テーブル]([各カラム]) values ([各設定値]) ...」のSQL。一度に挿入する行数がMultiInsertRowsPerQueryを超過しないよう分割して返されます</returns>
             /// <remarks>Oracleの一括InsertはSQL-92の構文ではなくOracle固有のinsert-all構文を使用</remarks>
-            public override IEnumerable<string> BuildMultiInsert<T>(IEnumerable<T> records, Expression<Func<T, dynamic>> targetColumns = null)
+            public override IEnumerable<string> BuildMultiInsert<T>(IEnumerable<T> records, Expression<Func<T, dynamic>>? targetColumns = null)
             {
                 var tableInfo = GetTableInfo<T>();
                 var columns = (targetColumns == null
@@ -132,23 +132,23 @@ namespace DapperAid
             /// <remarks>パラメータ値が1000件超の場合は「([COL] Like :P00)or([COL] Like :P01)...」といった条件式が返される。パラメータ値は1000件単位でバインドされる</remarks>
             public override string BuildWhereIn(Dapper.DynamicParameters parameters, TableInfo.Column column, bool opIsNot, object values)
             {
-                var allValues = (values as System.Collections.IEnumerable).Cast<object>().ToArray();
-                if (allValues.Length <= 1000)
-                {   // 1000件以下なら通常通り組み立て
-                    return base.BuildWhereIn(parameters, column, opIsNot, values);
+                var allValues = (values as System.Collections.IEnumerable)?.Cast<object>().ToArray();
+                if (allValues?.Length > 1000)
+                {   // in条件のパラメータ値が1000件超の場合、特殊組み立て
+                    var sb = new StringBuilder();
+                    var delimiter = "(";
+                    for (var i = 0; i < allValues.Length; i += 1000)
+                    {
+                        var count = Math.Min(1000, allValues.Length - i);
+                        sb.Append(delimiter);
+                        sb.Append(base.BuildWhereIn(parameters, column, opIsNot, new ArraySegment<object>(allValues, i, count)));
+                        delimiter = ")or(";
+                    }
+                    sb.Append(")");
+                    return sb.ToString();
                 }
-
-                var sb = new StringBuilder();
-                var delimiter = "(";
-                for (var i = 0; i < allValues.Length; i += 1000)
-                {
-                    var count = Math.Min(1000, allValues.Length - i);
-                    sb.Append(delimiter);
-                    sb.Append(base.BuildWhereIn(parameters, column, opIsNot, new ArraySegment<object>(allValues, i, count)));
-                    delimiter = ")or(";
-                }
-                sb.Append(")");
-                return sb.ToString();
+                // 1000件以下なら通常通り組み立て
+                return base.BuildWhereIn(parameters, column, opIsNot, values);
             }
         }
     }

@@ -29,7 +29,7 @@ namespace DapperAidTest
         class Member
         {
             [Key]
-            [InsertSql(false, RetrieveInsertedId = true)]
+            [InsertValue(false, RetrieveInsertedId = true)]
             [DDL("INTEGER")]
             public int Id { get; set; }
 
@@ -38,10 +38,10 @@ namespace DapperAidTest
             [Column("Phone_No")]
             public string Tel { get; set; }
 
-            [InsertSql("CURRENT_TIMESTAMP"), UpdateSql(false)]
+            [InsertValue("CURRENT_TIMESTAMP"), UpdateValue(false)]
             public DateTime? CreatedAt { get; set; }
 
-            [InsertSql("CURRENT_TIMESTAMP"), UpdateSql("CURRENT_TIMESTAMP"), ConcurrencyCheck]
+            [InsertValue("CURRENT_TIMESTAMP"), UpdateValue("CURRENT_TIMESTAMP"), ConcurrencyCheck]
             public DateTime? UpdatedAt { get; private set; }
 
             [NotMapped]
@@ -126,7 +126,7 @@ namespace DapperAidTest
                 );
 
                 // select records --------------------
-                Member record = connection.FirstOrDefault<Member>();
+                Member record = connection.SelectFirstOrDefault<Member>();
                 
                 IReadOnlyList<Member> list1 = connection.Select<Member>();
 
@@ -270,7 +270,7 @@ namespace DapperAidTest
                 connection.Execute(createTableSql);
 
                 var list1 = connection.Select<Member>(r =>
-                    (r.Name == ToSql.In(new[] { "A", "B" })
+                    (r.Name == SqlExpr.In(new[] { "A", "B" })
                     || r.Name != SqlExpr.Like("%TEST%")
                     || r.Name == SqlExpr.Between("1", "5")
                     || DateTime.Now < r.CreatedAt));
@@ -294,10 +294,10 @@ namespace DapperAidTest
 
             public string Name { get; set; }
 
-            [InsertSql("CURRENT_TIMESTAMP"), UpdateSql(false)]
+            [InsertValue("CURRENT_TIMESTAMP"), UpdateValue(false)]
             public DateTime? CreatedAt { get; set; }
 
-            [InsertSql(false), UpdateSql("CURRENT_TIMESTAMP")]
+            [InsertValue(false), UpdateValue("CURRENT_TIMESTAMP")]
             public DateTime? UpdatedAt { get; private set; }
 
             public override string ToString()

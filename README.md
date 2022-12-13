@@ -50,7 +50,7 @@ using DapperAid.DataAnnotations;
 class Member
 {
     [Key]
-    [InsertSql(false, RetrieveInsertedId = true)]
+    [InsertValue(false, RetrieveInsertedId = true)]
     [DapperAid.Ddl.DDL("INTEGER")] // (for extra feature, generating Create-Table-SQL as SQLite Identity Column)
     public int Id { get; set; }
 
@@ -59,10 +59,10 @@ class Member
     [Column("Phone_No")]
     public string Tel { get; set; }
 
-    [InsertSql("CURRENT_TIMESTAMP"), UpdateSql(false)]
+    [InsertValue("CURRENT_TIMESTAMP"), UpdateValue(false)]
     public DateTime? CreatedAt { get; set; }
 
-    [InsertSql("CURRENT_TIMESTAMP"), UpdateSql("CURRENT_TIMESTAMP")]
+    [InsertValue("CURRENT_TIMESTAMP"), UpdateValue("CURRENT_TIMESTAMP")]
     public DateTime? UpdatedAt { get; private set; }
 
     [NotMapped]
@@ -70,6 +70,8 @@ class Member
 }
 ```
 - Members declared as "Property" are subject to automatic SQL generation / execution.
+  - A Readonly-property can only be specified as a Where-clause-column or update value.
+  - A Writeonly-Property can only be specified as a Selection column.
 - See [About Table Attributes](#attributes) for attribute details.
 
 ## Operation example
@@ -99,22 +101,6 @@ void OperationExample() {
   using (IDbConnection connection = GetYourDbConnection()) 
   {   
 ```
-### `Select(by Key [, targetColumns[, otherClauses]])` : returns one row or null
-```cs
-    Member select1 = connection.Select(
-        () => new Member { Id = 1 });
-    // -> select "Id", "Name", Phone_No as "Tel", "CreatedAt", "UpdatedAt" from Members where "Id"=@Id(=1)
-
-    Member select2 = connection.Select(
-        () => new Member { Id = 1 },
-        r => new { r.Id, r.Name });
-    // -> select "Id", "Name" from Members where "Id"=@Id
-
-    Member selectForUpdate = connection.Select(
-        () => new Member { Id = 1 },
-        otherClauses: "FOR UPDATE");
-    // -> select (all columns) from Members where "Id"=@Id FOR UPDATE
-```
 ### `Select<T>([ where[, targetColumns][, otherClauses]])` : returns list&lt;T&gt;
 ```cs
     IReadOnlyList<Member> list1 = connection.Select<Member>();
@@ -142,6 +128,11 @@ void OperationExample() {
     // -> select "Id", "Name" from Members where Phone_No is not null
     //           ORDER BY Name LIMIT 5 OFFSET 10
 ```
+### `SelectFirstOrDefault<T>([ where[, targetColumns][, otherClauses]])` : returns one row or null
+```cs
+    Member? first1 = connection.SelectFirstOrDefault<Member>();
+    // -> Execute connection.QueryFirstOrDefault<Member>(sql) instead of connection.Query<Member>(sql).
+```
 ### `Select<TFrom, TColumns>([ where[, otherClauses]])` : returns list&lt;TColumns&gt;
 ```cs
     class SelColumns {
@@ -156,6 +147,29 @@ void OperationExample() {
     );
     // -> select "Name", Phone_No as "Tel", CURRENT_TIMESTAMP as "Now"
     //           from Members where Phone_No is not null order by Id
+```
+### `SelectFirstOrDefault<TFrom, TColumns>([ where[, otherClauses]])` : returns one row or null
+```cs
+    SelColumns? first2 = connection.SelectFirstOrDefault<Member, SelColumns>(
+        r => r.Tel == null
+    );
+    // -> Execute connection.QueryFirstOrDefault<SelColumns>(sql) instead of connection.Query<SelColumns>(sql).
+```
+### `Select(by Key [, targetColumns[, otherClauses]])` : returns one row or null
+```cs
+    Member? select1 = connection.Select(
+        () => new Member { Id = 1 });
+    // -> select "Id", "Name", Phone_No as "Tel", "CreatedAt", "UpdatedAt" from Members where "Id"=@Id(=1)
+
+    Member? select2 = connection.Select(
+        () => new Member { Id = 1 },
+        r => new { r.Id, r.Name });
+    // -> select "Id", "Name" from Members where "Id"=@Id
+
+    Member? selectForUpdate = connection.Select(
+        () => new Member { Id = 1 },
+        otherClauses: "FOR UPDATE");
+    // -> select (all columns) from Members where "Id"=@Id FOR UPDATE
 ```
 ### `Count<T>([where])` : returns the number of rows
 ```cs
@@ -186,7 +200,7 @@ void OperationExample() {
     //    values (@Name, @Tel, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ; select LAST_INSERT_ROWID()
     Trace.WriteLine("insertedID=" + rec3.Id); // The value assigned to the "Id" column is set
 ```
-- Note: In these examples, the [[InsertSql](#insertsqlattribute)] attribute is specified that  
+- Note: In these examples, the [[InsertValue](#InsertValueattribute)] attribute is specified that  
   the "Id" column is autoincrement and obtains the registered value.
 
 ### `Insert(specifiedColumnValue)` : returns 1(inserted row)
@@ -387,6 +401,14 @@ It can also be combined with the condition judgment not based on SQL.
     .Select<T>(t => text2 == null || t.TextCol == text2); // -> where true
     .Select<T>(t => text2 != null && t.TextCol == text2); // -> where false
 ```
+Ternary operators (cond ? trueCond : falseCond) are also supported.
+```cs
+    int intVal = -1;
+    .Select(t.CondCol == 1 ? t.IntCol > intVal : t.IntCol < intVal) // -> where (("CondCol"=1 and "IntCol">@IntCol) or ("CondCol"<>1 and "IntCol"<@IntCol))`
+    .Select(intVal < 0 ? t.IntCol == null : t.IntCol > intVal) // -> where "IntCol">@IntCol
+    .Select(intVal > 0 ? t.IntCol == null : t.IntCol > intVal) // -> where "IntCol" is null`
+```
+
 
 ## SQL direct description
 You can describe conditional expressions and subqueries directly.
@@ -399,12 +421,15 @@ using DapperAid; // uses "SqlExpr" static class
     .Select<T>(t => SqlExpr.Eval("ABS(IntCol) < 5"));
     // --> where ABS(IntCol) < 5
 
-    .Select<T>(t => SqlExpr.Eval("exists(select * from otherTable where...)"));
+    .Select<T>(t => SqlExpr.Eval("(exists(select * from otherTable where...))"));
     // --> where (exists(select * from otherTable where...))
 ```
-You can also bind parameter values by using `SqlExpr.Eval(...)`.
+You can also bind parameter values by using `SqlExpr.In(...)` / `SqlExpr.Eval(...)`.
 ```cs
     int intVal = 99; // (bound to @P00, @P01 or such name)
+
+    .Select<T>(t => t.TextCol == SqlExpr.In<string>("select text from otherTable where a=", intVal, " or b=", intVal))
+    // -->  where "TextCol" in(select text from otherTable where a=@P00 or b=@P01)
 
     .Select<T>(t => SqlExpr.Eval("IntCol < ", intVal, " or IntCol2 > ", intVal));
     // --> where IntCol < @P00 or IntCol2 > @P01 
@@ -518,40 +543,40 @@ using DapperAid.Ddl; // (for extra feature)
 ```
 - Note: You can also specify [Key] for multiple columns (as a composite key)
 
-### <a name="insertsqlattribute">`[InsertSql]`</a> : apply if you want to modify the insert value
+### <a name="InsertValueattribute">`[InsertValue]`</a> : apply if you want to modify the insert value
 ```cs
-    [InsertSql("CURRENT_TIMESTAMP")] // Specify the value to set with SQL instead of bind value
+    [InsertValue("CURRENT_TIMESTAMP")] // Specify the value to set with SQL instead of bind value
     public DateTime CreatedAt { get; set; }
     // -> insert into ...(..., "CreatedAt", ...) values(..., CURRENT_TIMESTAMP, ...)
 
-    [InsertSql("date(@DateOfBirth)")] // Edit bind value with SQL
+    [InsertValue("date(@DateOfBirth)")] // Edit bind value with SQL
     public DateTime DateOfBirth
     // -> insert into ...(..., "BirtyDay", ...) values(..., date(@DateOfBirth), ...)
 
     // Do not set column (DB default value is set)
-    [InsertSql(false)] 
+    [InsertValue(false)] 
 
     // Default value(Identity etc.) is set, and obtain the value when InsertAndRetrieveId() is called
-    [InsertSql(false, RetrieveInsertedId = true)] 
+    [InsertValue(false, RetrieveInsertedId = true)] 
 
     // set sequence value and obtain (works only PostgreSQL, Oracle)
-    [InsertSql("nextval(SEQUENCENAME)", RetrieveInsertedId = true)]
+    [InsertValue("nextval(SEQUENCENAME)", RetrieveInsertedId = true)]
 ```
 - Note: If you call Insert() with the target column explicitly specified,  
   The bind value is set instead of the value by this attribute.
 
-### `[UpdateSql]` : apply if you want to modify the value on update
+### `[UpdateValue]` : apply if you want to modify the value on update
 ```cs
-    [UpdateSql("CURRENT_TIMESTAMP")] : // Specify the value to set with SQL instead of bind value
+    [UpdateValue("CURRENT_TIMESTAMP")] : // Specify the value to set with SQL instead of bind value
     public DateTime UpdatedAt { get; set; }
     // -> update ... set ..., "UpdatedAt"=CURRENT_TIMESTAMP, ....
 
-    [UpdateSql("COALESCE(@DCnt, 0)")] // Edit bind value with SQL
+    [UpdateValue("COALESCE(@DCnt, 0)")] // Edit bind value with SQL
     public Int? DCnt { get; set; }
     // -> update ... set ..., "DCnt"=COALESCE(@DCnt, 0), ...
 
     // Do not set column (not be updated)
-    [UpdateSql(false)] 
+    [UpdateValue(false)] 
 ```
 - Note: If you call Update() with the target column explicitly specified,  
   The bind value is set instead of the value by this attribute.

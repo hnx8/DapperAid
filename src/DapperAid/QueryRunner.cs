@@ -19,7 +19,7 @@ namespace DapperAid
         protected readonly IDbConnection Connection;
 
         /// <summary>DBトランザクション</summary>
-        protected readonly IDbTransaction Transaction;
+        protected readonly IDbTransaction? Transaction;
 
         /// <summary>タイムアウト時間</summary>
         protected readonly int? Timeout;
@@ -35,7 +35,7 @@ namespace DapperAid
         /// <param name="transaction">DBトランザクション</param>
         /// <param name="timeout">タイムアウト時間</param>
         /// <param name="builder">Dapperで実行するSQL/パラメータを組み立てるオブジェクト（省略時はシステム既定のオブジェクトを使用）</param>
-        private QueryRunner(IDbConnection connection, IDbTransaction transaction, int? timeout, QueryBuilder builder)
+        private QueryRunner(IDbConnection connection, IDbTransaction? transaction, int? timeout, QueryBuilder? builder)
         {
             this.Connection = connection;
             this.Transaction = transaction;
@@ -49,7 +49,7 @@ namespace DapperAid
         /// <param name="connection">DB接続</param>
         /// <param name="timeout">タイムアウト時間</param>
         /// <param name="builder">Dapperで実行するSQL/パラメータを組み立てるオブジェクト（省略時はシステム既定のオブジェクトを使用）</param>
-        public QueryRunner(IDbConnection connection, int? timeout = null, QueryBuilder builder = null)
+        public QueryRunner(IDbConnection connection, int? timeout = null, QueryBuilder? builder = null)
             : this(connection, null, timeout, builder) { }
 
         /// <summary>
@@ -58,8 +58,8 @@ namespace DapperAid
         /// <param name="transaction">DBトランザクション</param>
         /// <param name="timeout">タイムアウト時間</param>
         /// <param name="builder">Dapperで実行するSQL/パラメータを組み立てるオブジェクト（省略時はシステムデフォルトのオブジェクトを使用）</param>
-        public QueryRunner(IDbTransaction transaction, int? timeout = null, QueryBuilder builder = null)
-            : this(transaction.Connection, transaction, timeout, builder) { }
+        public QueryRunner(IDbTransaction transaction, int? timeout = null, QueryBuilder? builder = null)
+            : this(transaction.Connection!, transaction, timeout, builder) { }
 
         #endregion
 
@@ -71,7 +71,8 @@ namespace DapperAid
         /// <param name="where">レコード絞り込み条件（絞り込みを行わず全件対象とする場合はnull）</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>レコード数</returns>
-        public ulong Count<T>(Expression<Func<T, bool>> where = null)
+        public ulong Count<T>(Expression<Func<T, bool>>? where = null)
+            where T : notnull
         {
             var parameters = new DynamicParameters();
             var sql = this.Builder.BuildCount<T>() + this.Builder.BuildWhere(parameters, where);
@@ -86,7 +87,8 @@ namespace DapperAid
         /// <param name="otherClauses">SQL文の末尾に付加するforUpdate指定などがあれば、その内容</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>取得したレコード（１件、レコード不存在の場合はnull）</returns>
-        public T Select<T>(Expression<Func<T>> keyValues, Expression<Func<T, dynamic>> targetColumns = null, string otherClauses = null)
+        public T? Select<T>(Expression<Func<T>> keyValues, Expression<Func<T, dynamic>>? targetColumns = null, string? otherClauses = null)
+            where T : notnull
         {
             var parameters = new DynamicParameters();
             var sql = this.Builder.BuildSelect<T>(targetColumns)
@@ -103,27 +105,28 @@ namespace DapperAid
         /// <param name="otherClauses">SQL文の末尾に付加するorderBy条件/limit/offset/forUpdate指定などがあれば、その内容</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>レコードのリスト</returns>
-        public IReadOnlyList<T> Select<T>(Expression<Func<T, bool>> where = null, Expression<Func<T, dynamic>> targetColumns = null, string otherClauses = null)
+        public IReadOnlyList<T> Select<T>(Expression<Func<T, bool>>? where = null, Expression<Func<T, dynamic>>? targetColumns = null, string? otherClauses = null)
+            where T : notnull
         {
             var parameters = new DynamicParameters();
             var sql = this.Builder.BuildSelect(targetColumns)
                 + this.Builder.BuildWhere(parameters, where)
                 + this.Builder.BuildSelectOrderByEtc(targetColumns, otherClauses);
             var result = this.Connection.Query<T>(sql, parameters, this.Transaction, true, this.Timeout);
-            return result as IReadOnlyList<T>;
+            return (IReadOnlyList<T>)result;
         }
 
         /// <summary>
         /// 指定されたテーブルからレコードを取得します。
         /// </summary>
-        /// <param name="connection">DB接続</param>
         /// <param name="where">レコード絞り込み条件（絞り込みを行わない場合はnull）</param>
-        /// <param name="targetColumns">値取得対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
         /// <param name="otherClauses">SQL文の末尾に付加するforUpdate指定などがあれば、その内容</param>
         /// <typeparam name="TFrom">取得対象テーブルにマッピングされた型</typeparam>
         /// <typeparam name="TColumns">取得対象列にマッピングされた型</typeparam>
         /// <returns>取得したレコード（１件、レコード不存在の場合はnull）</returns>
-        public TColumns FirstOrDefault<TFrom, TColumns>(Expression<Func<TFrom, bool>> where = null, string otherClauses = null)
+        public TColumns? SelectFirstOrDefault<TFrom, TColumns>(Expression<Func<TFrom, bool>>? where = null, string? otherClauses = null)
+            where TFrom : notnull
+            where TColumns : notnull
         {
             var parameters = new DynamicParameters();
             var sql = this.Builder.BuildSelect<TFrom, TColumns>()
@@ -140,14 +143,16 @@ namespace DapperAid
         /// <typeparam name="TFrom">取得対象テーブルにマッピングされた型</typeparam>
         /// <typeparam name="TColumns">取得対象列にマッピングされた型</typeparam>
         /// <returns>レコードのリスト</returns>
-        public IReadOnlyList<TColumns> Select<TFrom, TColumns>(Expression<Func<TFrom, bool>> where = null, string otherClauses = null)
+        public IReadOnlyList<TColumns> Select<TFrom, TColumns>(Expression<Func<TFrom, bool>>? where = null, string? otherClauses = null)
+            where TFrom : notnull
+            where TColumns : notnull
         {
             var parameters = new DynamicParameters();
             var sql = this.Builder.BuildSelect<TFrom, TColumns>()
                 + this.Builder.BuildWhere(parameters, where)
                 + this.Builder.BuildSelectOrderByEtc<TFrom, TColumns>(otherClauses);
             var result = this.Connection.Query<TColumns>(sql, parameters, this.Transaction, true, this.Timeout);
-            return result as IReadOnlyList<TColumns>;
+            return (IReadOnlyList<TColumns>)result;
         }
 
 
@@ -158,6 +163,7 @@ namespace DapperAid
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>挿入された行数</returns>
         public int Insert<T>(Expression<Func<T>> values)
+            where T : notnull
         {
             var parameters = new DynamicParameters();
             var sql = this.Builder.BuildInsert<T>(parameters, values);
@@ -171,7 +177,8 @@ namespace DapperAid
         /// <param name="targetColumns">値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>挿入された行数</returns>
-        public int Insert<T>(T data, Expression<Func<T, dynamic>> targetColumns = null)
+        public int Insert<T>(T data, Expression<Func<T, dynamic>>? targetColumns = null)
+            where T : notnull
         {
             var sql = this.Builder.BuildInsert<T>(targetColumns);
             return this.Connection.Execute(sql, data, this.Transaction, this.Timeout);
@@ -187,12 +194,13 @@ namespace DapperAid
         /// <remarks>
         /// 自動連番に対応していないテーブル/DBMSでは例外がスローされます。
         /// </remarks>
-        public int InsertAndRetrieveId<T>(T data, Expression<Func<T, dynamic>> targetColumns = null)
+        public int InsertAndRetrieveId<T>(T data, Expression<Func<T, dynamic>>? targetColumns = null)
+            where T : notnull
         {
             var sql = this.Builder.BuildInsertAndRetrieveId<T>(targetColumns);
 
             var tableInfo = this.Builder.GetTableInfo<T>();
-            var idProp = tableInfo.RetrieveInsertedIdColumn.PropertyInfo;
+            var idProp = tableInfo.RetrieveInsertedIdColumn?.PropertyInfo ?? throw new ConstraintException("RetrieveInsertedId-Column not specified");
             object insertedId;
             if (sql.Contains(" into " + this.Builder.ParameterMarker + idProp.Name))
             {
@@ -225,7 +233,8 @@ namespace DapperAid
         /// <param name="targetColumns">値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>挿入された行数</returns>
-        public int InsertRows<T>(IEnumerable<T> records, Expression<Func<T, dynamic>> targetColumns = null)
+        public int InsertRows<T>(IEnumerable<T> records, Expression<Func<T, dynamic>>? targetColumns = null)
+            where T : notnull
         {
             var ret = 0;
             foreach (var sql in this.Builder.BuildMultiInsert(records, targetColumns))
@@ -243,7 +252,8 @@ namespace DapperAid
         /// <param name="updateTargetColumns">update実行時の値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col2, t.Col3 }</c>」</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>挿入または更新された行数</returns>
-        public int InsertOrUpdate<T>(T data, Expression<Func<T, dynamic>> insertTargetColumns = null, Expression<Func<T, dynamic>> updateTargetColumns = null)
+        public int InsertOrUpdate<T>(T data, Expression<Func<T, dynamic>>? insertTargetColumns = null, Expression<Func<T, dynamic>>? updateTargetColumns = null)
+            where T : notnull
         {
             if (!this.Builder.SupportsUpsert)
             {
@@ -262,7 +272,8 @@ namespace DapperAid
         /// <param name="updateTargetColumns">update実行時の値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col2, t.Col3 }</c>」</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>挿入または更新された行数</returns>
-        public int InsertOrUpdateRows<T>(IEnumerable<T> records, Expression<Func<T, dynamic>> insertTargetColumns = null, Expression<Func<T, dynamic>> updateTargetColumns = null)
+        public int InsertOrUpdateRows<T>(IEnumerable<T> records, Expression<Func<T, dynamic>>? insertTargetColumns = null, Expression<Func<T, dynamic>>? updateTargetColumns = null)
+            where T : notnull
         {
             if (!this.Builder.SupportsUpsert)
             {   // Upsert未対応の場合は１レコードずつ処理実行
@@ -286,7 +297,8 @@ namespace DapperAid
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>挿入または更新された行数</returns>
         /// <remarks>１レコードずつSQLを実行するため低速です。</remarks>
-        protected int UpdateOrInsertOnebyone<T>(IEnumerable<T> records, Expression<Func<T, dynamic>> insertTargetColumns = null, Expression<Func<T, dynamic>> updateTargetColumns = null)
+        protected int UpdateOrInsertOnebyone<T>(IEnumerable<T> records, Expression<Func<T, dynamic>>? insertTargetColumns = null, Expression<Func<T, dynamic>>? updateTargetColumns = null)
+            where T : notnull
         {
             var insertSql = this.Builder.BuildInsert<T>(insertTargetColumns);
             var updateSql = this.Builder.BuildUpdate<T>(updateTargetColumns) + this.Builder.BuildWhere<T>(default(T), c => (c.IsKey));
@@ -310,6 +322,7 @@ namespace DapperAid
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>更新された行数</returns>
         public int Update<T>(Expression<Func<T>> values, Expression<Func<T, bool>> where)
+            where T : notnull
         {
             var parameters = new DynamicParameters();
             var sql = this.Builder.BuildUpdate<T>(parameters, values)
@@ -324,7 +337,8 @@ namespace DapperAid
         /// <param name="targetColumns">値更新対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>更新された行数</returns>
-        public int Update<T>(T data, Expression<Func<T, dynamic>> targetColumns = null)
+        public int Update<T>(T data, Expression<Func<T, dynamic>>? targetColumns = null)
+            where T : notnull
         {
             // PKカラム、楽観同時実行チェック対象カラム(ただしバインド値で更新するカラムは除く)をwhere条件カラムとしてSQL生成実行
             var sql = this.Builder.BuildUpdate<T>(targetColumns)
@@ -338,7 +352,8 @@ namespace DapperAid
         /// <param name="where">削除対象レコードの条件</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>削除された行数</returns>
-        public int Delete<T>(Expression<Func<T, bool>> where = null)
+        public int Delete<T>(Expression<Func<T, bool>>? where = null)
+            where T : notnull
         {
             var parameters = new DynamicParameters();
             var sql = this.Builder.BuildDelete<T>()
@@ -352,6 +367,7 @@ namespace DapperAid
         /// <param name="data">削除するレコード</param>
         /// <returns>削除された行数</returns>
         public int Delete<T>(T data)
+            where T : notnull
         {
             // PKカラム、楽観同時実行チェック対象カラムをwhere条件カラムとしてSQL生成実行
             var sql = this.Builder.BuildDelete<T>()
@@ -364,6 +380,7 @@ namespace DapperAid
         /// </summary>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         public void Truncate<T>()
+            where T : notnull
         {
             var sql = this.Builder.BuildTruncate<T>();
             this.Connection.Execute(sql, null, this.Transaction, this.Timeout);

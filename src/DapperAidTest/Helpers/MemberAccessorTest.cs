@@ -77,5 +77,54 @@ namespace DapperAidTest.Helpers
             object actual1 = MemberAccessor.GetStaticValue(field);
             Assert.AreEqual("STATIC-F", actual1);
         }
+
+        private class NullableTestTable
+        {
+            public int? Test1 { get; set; }
+            public int? Test2 { get; set; }
+            public bool HasValue { get; set; }
+            public string FromStatic { get; set; }
+        }
+
+        [TestMethod]
+        public void TestNull許容値型1()
+        {
+            var rec = new NullableTestTable { Test1 = 12, Test2 = null };
+            Table1.StaticValue = "STATIC";
+
+            var parameters = new Dapper.DynamicParameters();
+            var sql1 = DapperAid.QueryBuilder.DefaultInstance.BuildWhere(parameters, () => new NullableTestTable
+            {   // null許容値型の非null値のメソッド/プロパティを呼び出し
+                Test1 = rec.Test1.GetValueOrDefault(),
+                Test2 = rec.Test1.GetValueOrDefault(-555),
+                HasValue = rec.Test1.HasValue,
+                FromStatic = Table1.StaticValue,
+            });
+            Assert.AreEqual(12, parameters.Get<int>("Test1"));
+            Assert.AreEqual(12, parameters.Get<int>("Test2"));
+            Assert.AreEqual(true, parameters.Get<bool>("HasValue"));
+            Assert.AreEqual("STATIC", parameters.Get<string>("FromStatic"));
+        }
+
+        [TestMethod]
+        public void TestNull許容値型2()
+        {
+            var rec = new NullableTestTable { Test1 = 12, Test2 = null };
+            Table1.StaticValue = null;
+
+            var parameters = new Dapper.DynamicParameters();
+            var sql1 = DapperAid.QueryBuilder.DefaultInstance.BuildWhere(parameters, () => new NullableTestTable
+            {   // null許容値型のnull値のメソッド/プロパティを呼び出し
+                Test1 = rec.Test2.GetValueOrDefault(),
+                Test2 = rec.Test2.GetValueOrDefault(-555),
+                HasValue = rec.Test2.HasValue,
+                FromStatic = Table1.StaticValue,
+            });
+            Assert.AreEqual(0, parameters.Get<int>("Test1"));
+            Assert.AreEqual(-555, parameters.Get<int>("Test2"));
+            Assert.AreEqual(false, parameters.Get<bool>("HasValue"));
+            Assert.AreEqual(sql1, " where \"Test1\"=@Test1 and \"Test2\"=@Test2 and \"HasValue\"=@HasValue and \"FromStatic\" is null");
+            //Assert.AreEqual(parameters.Get<string>("FromStatic"), null); // nullなのでバインドされない
+        }
     }
 }
