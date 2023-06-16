@@ -87,6 +87,22 @@ namespace DapperAid
         }
 
         /// <summary>
+        /// 指定されたテーブルからレコードを非同期で取得します。
+        /// </summary>
+        /// <param name="transaction">DBトランザクション</param>
+        /// <param name="where">レコード絞り込み条件（絞り込みを行わない場合はnull）</param>
+        /// <param name="targetColumns">値取得対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
+        /// <param name="otherClauses">SQL文の末尾に付加するforUpdate指定などがあれば、その内容</param>
+        /// <param name="timeout">タイムアウト時間</param>
+        /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
+        /// <returns>取得したレコード（１件、レコード不存在の場合はnull）</returns>
+        public static Task<T?> SelectFirstOrDefaultAsync<T>(this IDbTransaction transaction, Expression<Func<T, bool>>? where, Expression<Func<T, dynamic>>? targetColumns, string? otherClauses = null, int? timeout = null)
+            where T : notnull
+        {
+            return new QueryRunner(transaction, timeout).SelectFirstOrDefaultAsync<T>(where, targetColumns, otherClauses);
+        }
+
+        /// <summary>
         /// 指定されたテーブルからレコードのリストを非同期で取得します。
         /// </summary>
         /// <param name="transaction">DBトランザクション</param>

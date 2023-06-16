@@ -944,7 +944,7 @@ namespace DapperAid
                     return null;
                 }
                 // tableInfoのカラムに対応するなら、そのカラム情報を返す
-                return tableInfo.Columns.Where(c => c.PropertyInfo == prop).FirstOrDefault();
+                return tableInfo.Columns.Where(c => c.PropertyInfo.Name == prop.Name).FirstOrDefault();
             };
 
             var binaryExpr = ExpressionHelper.CastTo<BinaryExpression>(expression);
