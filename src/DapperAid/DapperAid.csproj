@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <PropertyGroup>
-    <Version>1.0.1</Version>
+    <Version>1.1.0</Version>
     <Authors>hnx8(H.Takahashi)</Authors>
     <Copyright>Copyright (C) hnx8(H.Takahashi)</Copyright>
     <PackageProjectUrl>https://github.com/hnx8/DapperAid</PackageProjectUrl>
@@ -46,4 +46,10 @@ By specifying Attribute / Lambda-Expression, You can perform database query/upda
     </PackageReference>
   </ItemGroup>
 
+  <PropertyGroup>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\"/>
+  </ItemGroup>
 </Project>

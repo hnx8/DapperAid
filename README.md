@@ -74,19 +74,20 @@ class Member
   - A Writeonly-Property can only be specified as a Selection column.
 - See [About Table Attributes](#attributes) for attribute details.
 
-## Operation example
+## Initializing
 ```cs
 using System.Collections.Generic;
 using System.Data;
 using DapperAid;
-
-void OperationExample() {
 ```
-### Initializing
 ```cs
-  QueryBuilder.DefaultInstance = new QueryBuilder.SQLite(); // (example for SQLite)
+IDbConnection connection = GetYourDbConnection();
 ```
-- <a name="querybuilders"></a>Set `DefaultInstance` corresponding to your DBMS from below.
+### Creating QueryBuilder
+```cs
+QueryBuilder queryBuilderInstance = new QueryBuilder.Sqlite(); // (example for SQLite)
+```
+<a name="querybuilders"></a>First, create instance corresponding to your DBMS from below.
   - new QueryBuilder.Oracle()
   - new QueryBuilder.MySql()
   - new QueryBuilder.Postgres()
@@ -97,10 +98,26 @@ void OperationExample() {
 
   These instance generates appropriate SQL statement for your DBMS.  
   (You can also customize the QueryBuilder class as needed)
+
+### Associate with Db connection
+Next, link the QueryBuilder to the DbConnection. 
 ```cs
-  using (IDbConnection connection = GetYourDbConnection()) 
-  {   
+// When linking with a DB connection object
+connection.UseDapperAid(queryBuilderInstance);
 ```
+```cs
+// When linking with a DB connection string
+queryBuilderInstance.MapDbConnectionString("YourDbConncetionString");
+```
+- In previous versions: link the QueryBuilder for all DB connections.
+  ```cs
+  QueryBuilder.DefaultInstance = queryBuilderInstance;
+  // This writing style is still in effect for compatibility.
+  ```
+Then you can execute these extension method described below.
+
+
+## Executing CRUD 
 ### `Select<T>([ where[, targetColumns][, otherClauses]])` : returns list&lt;T&gt;
 ```cs
     IReadOnlyList<Member> list1 = connection.Select<Member>();

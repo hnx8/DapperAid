@@ -34,13 +34,13 @@ namespace DapperAid
         /// <param name="connection">DB接続</param>
         /// <param name="transaction">DBトランザクション</param>
         /// <param name="timeout">タイムアウト時間</param>
-        /// <param name="builder">Dapperで実行するSQL/パラメータを組み立てるオブジェクト（省略時はシステム既定のオブジェクトを使用）</param>
+        /// <param name="builder">Dapperで実行するSQL/パラメータを組み立てるオブジェクト（省略時はDB接続ごとの既定のオブジェクトを使用）</param>
         private QueryRunner(IDbConnection connection, IDbTransaction? transaction, int? timeout, QueryBuilder? builder)
         {
             this.Connection = connection;
             this.Transaction = transaction;
             this.Timeout = timeout;
-            this.Builder = builder ?? QueryBuilder.DefaultInstance;
+            this.Builder = builder ?? connection.GetDapperAidQueryBuilder();
         }
 
         /// <summary>
@@ -48,7 +48,7 @@ namespace DapperAid
         /// </summary>
         /// <param name="connection">DB接続</param>
         /// <param name="timeout">タイムアウト時間</param>
-        /// <param name="builder">Dapperで実行するSQL/パラメータを組み立てるオブジェクト（省略時はシステム既定のオブジェクトを使用）</param>
+        /// <param name="builder">Dapperで実行するSQL/パラメータを組み立てるオブジェクト（省略時はDB接続ごとの既定のオブジェクトを使用）</param>
         public QueryRunner(IDbConnection connection, int? timeout = null, QueryBuilder? builder = null)
             : this(connection, null, timeout, builder) { }
 
@@ -57,7 +57,7 @@ namespace DapperAid
         /// </summary>
         /// <param name="transaction">DBトランザクション</param>
         /// <param name="timeout">タイムアウト時間</param>
-        /// <param name="builder">Dapperで実行するSQL/パラメータを組み立てるオブジェクト（省略時はシステムデフォルトのオブジェクトを使用）</param>
+        /// <param name="builder">Dapperで実行するSQL/パラメータを組み立てるオブジェクト（省略時はDB接続ごとの既定のオブジェクトを使用）</param>
         public QueryRunner(IDbTransaction transaction, int? timeout = null, QueryBuilder? builder = null)
             : this(transaction.Connection!, transaction, timeout, builder) { }
 

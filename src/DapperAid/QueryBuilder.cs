@@ -14,16 +14,28 @@ namespace DapperAid
 {
     /// <summary>
     /// Dapperで実行するSQL/パラメータを組み立てるクラスです。
+    /// DBMSに応じたサブクラスによりオーバーライドされます。
     /// </summary>
-    public partial class QueryBuilder
+    public abstract partial class QueryBuilder
     {
         /// <summary>
+        /// DB接続（DB接続文字列）毎のQueryBuilderオブジェクトを紐づけない場合の
         /// DapperAidの拡張メソッドで使用する既定のQueryBuilderオブジェクトです。
         /// </summary>
-        /// <remarks>
-        /// システム初期化時にDBMSに応じたサブクラスのオブジェクトを設定してください。
-        /// </remarks>
-        public static QueryBuilder DefaultInstance { get; set; } = new QueryBuilder();
+        public static QueryBuilder DefaultInstance
+        {
+            get => IDbConnectionExtensions.GetDapperAidQueryBuilder(nameof(DefaultInstance));
+            set => IDbConnectionExtensions.MapDapperAid(value, nameof(DefaultInstance));
+        }
+
+        /// <summary>
+        /// このQueryBuilderオブジェクトを、指定されたDB接続文字列のDbConnectionオブジェクトで使用するよう紐づけます。
+        /// </summary>
+        /// <param name="connectionString">DB接続文字列</param>
+        public void MapDbConnectionString(string connectionString)
+        {
+            IDbConnectionExtensions.MapDapperAid(this, connectionString);
+        }
 
 
         /// <summary>
@@ -101,6 +113,19 @@ namespace DapperAid
         public virtual string FalseLiteral { get { return "false"; } }
 
         /// <summary>
+        /// 引数で指定された型の値について、SQLリテラル値表記への変換処理を設定します。
+        /// </summary>
+        /// <typeparam name="T">データ型</typeparam>
+        /// <param name="convertMethod">SQLリテラル値への変換メソッド</param>
+        /// <remarks>既存のQueryBuilderではリテラル値表記へ変換できないDBデータ型（Geometry型など）の変換処理などを追加するためのメソッドです。</remarks>
+        public virtual void AddSqlLiteralConverter<T>(Func<T, string> convertMethod)
+        {
+            _literalConverters[typeof(T)] = (value) => convertMethod((T)value);
+        }
+        /// <summary>型の値をSQLリテラル値表記へと変換する処理の対応付けDictionary</summary>
+        protected Dictionary<Type, Func<object, string>> _literalConverters = new();
+
+        /// <summary>
         /// 引数で指定された値をSQLリテラル値表記へと変換します。
         /// </summary>
         /// <param name="value">値</param>
@@ -108,10 +133,15 @@ namespace DapperAid
         public string ToSqlLiteral(object? value)
         {
             if (IsNull(value)) { return "null"; }
+            foreach (var c in _literalConverters)
+            {
+                if (c.Key.IsAssignableFrom(value.GetType())) { return c.Value(value); }
+            }
             if (value is string s) { return ToSqlLiteral(s); }
             if (value is DateTime dt) { return ToSqlLiteral(dt); }
             if (value is bool b) { return (b ? TrueLiteral : FalseLiteral); }
             if (value is Enum e) { return e.ToString("d"); }
+            if (value is byte[] blob) { return ToSqlLiteral(blob); }
             if (value is System.Collections.IEnumerable ienumerable && value.GetType().GetInterfaces().Any(t => t.IsConstructedGenericType && t.GetGenericTypeDefinition() == typeof(ICollection<>)))
             {
                 var sb = new StringBuilder();
@@ -147,6 +177,16 @@ namespace DapperAid
         {
             // 以下の書式はPostgreSQL,Oracle,DB2向け。SQLite/SqlServerはdatetime、Accessは#日時#、MySqlは文字列表記
             return "timestamp '" + value.ToString("yyyy-MM-dd HH:mm:ss.ffffff") + "'";
+        }
+        /// <summary>
+        /// 引数で指定されたblob値をSQLリテラル値表記へと変換します。
+        /// </summary>
+        /// <param name="value">値</param>
+        /// <returns>SQLリテラル値表記</returns>
+        /// <remarks>DBMSによりリテラル値表記が異なります。</remarks>
+        public virtual string ToSqlLiteral(byte[] value)
+        {
+            return "X'" + string.Concat(value.Select(b => $"{b:X2}")) + "'";
         }
 
         /// <summary>

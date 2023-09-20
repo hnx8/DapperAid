@@ -19,6 +19,17 @@ namespace DapperAid
             /// <summary>Postgres/SQLiteにおけるFalseを表すSQLリテラル表記です。</summary>
             public override string FalseLiteral { get { return "'0'"; } }
 
+            /// <summary>
+            /// 引数で指定されたblob値をPostgresにおけるSQLリテラル値表記へと変換します。
+            /// </summary>
+            /// <param name="value">値</param>
+            /// <returns>SQLリテラル値表記</returns>
+            /// <remarks>DBMSによりリテラル値表記が異なります。</remarks>
+            public override string ToSqlLiteral(byte[] value)
+            {
+                return @"'\x" + string.Concat(value.Select(b => $"{b:X2}")) + "'";
+            }
+
             /// <summary>自動連番値を取得するSQL句として、returning句を付加します。</summary>
             protected override string GetInsertedIdReturningSql<T>(TableInfo.Column column)
             {

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Linq;
 using System.Linq.Expressions;
 
 namespace DapperAid
@@ -10,6 +11,61 @@ namespace DapperAid
     /// </summary>
     public static partial class IDbConnectionExtensions
     {
+        #region DB接続ごとに別々のQueryBuilderオブジェクトを使用できるようにするためのメソッド等 -----------------
+        /// <summary>DB接続文字列と使用するQueryBuilderオブジェクトの紐づけ</summary>
+        private static readonly Dictionary<string, QueryBuilder> s_queryBuilders = new();
+
+        /// <summary>
+        /// このDB接続（DB接続文字列）でDapperAidを利用する際のSQL生成QueryBuilderオブジェクトを指定します。
+        /// </summary>
+        /// <param name="connection">DB接続</param>
+        /// <param name="queryBuilderInstance">QueryBuilderオブジェクト（DBMSに応じたサブクラスのオブジェクトを設定してください）</param>
+        /// <remarks>
+        /// 一度呼び出すと、接続文字列が同一のDbConnectionであればオブジェクトが同一か否かにかかわらず指定されたQueryBuilderオブジェクトを用いてDB操作を行うようになります。
+        /// </remarks>
+        public static void UseDapperAid(this IDbConnection connection, QueryBuilder queryBuilderInstance)
+        {
+            MapDapperAid(queryBuilderInstance, connection.ConnectionString);
+        }
+
+        /// <summary>
+        /// 引数で指定されたSQL生成QueryBuilderオブジェクトを、特定のDB接続文字列をもつDBConnectionオブジェクトで使用するよう紐づけを行います。
+        /// </summary>
+        /// <param name="queryBuilderInstance">QueryBuilderオブジェクト（DBMSに応じたサブクラスのオブジェクトを設定してください）</param>
+        /// <param name="connectionString">DB接続文字列</param>
+        /// <remarks>
+        /// 一度呼び出すと、接続文字列が同一のDbConnectionであればオブジェクトが同一か否かにかかわらず指定されたQueryBuilderオブジェクトを用いてDB操作を行うようになります。
+        /// </remarks>
+        public static void MapDapperAid(QueryBuilder queryBuilderInstance, string connectionString)
+        {
+            s_queryBuilders[connectionString] = queryBuilderInstance;
+        }
+
+        /// <summary>
+        /// このDB接続（DB接続文字列）で利用するSQL生成QueryBuilderオブジェクトを取得します。
+        /// </summary>
+        /// <param name="connection">DB接続</param>
+        /// <returns>SQL生成QueryBuilderオブジェクト</returns>
+        public static QueryBuilder GetDapperAidQueryBuilder(this IDbConnection connection)
+        {
+            return GetDapperAidQueryBuilder(connection.ConnectionString);
+        }
+
+        /// <summary>
+        /// 指定されたDB接続文字列のDBConnectionで利用するSQL生成QueryBuilderオブジェクトを取得します。
+        /// </summary>
+        /// <param name="connectionString">DB接続文字列</param>
+        /// <returns>SQL生成QueryBuilderオブジェクト</returns>
+        public static QueryBuilder GetDapperAidQueryBuilder(string connectionString)
+        {
+            return s_queryBuilders.TryGetValue(connectionString, out var instance)
+                ? instance
+                : QueryBuilder.DefaultInstance
+                ?? throw new InvalidOperationException("DapperAid's QueryBuilder is not configured for this DBConnection.");
+        }
+        #endregion -----------------------------------------------------------------------------------------
+
+
         /// <summary>
         /// 指定されたテーブルのレコード数を取得します。
         /// </summary>
