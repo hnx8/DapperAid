@@ -31,7 +31,7 @@ namespace DapperAid
             }
 
             /// <summary>
-            /// 引数で指定された日付値をMicrosoft AccessにおけるSQLリテラル値表記へと変換します。
+            /// 引数で指定された日時値をMicrosoft AccessにおけるSQLリテラル値表記へと変換します。
             /// </summary>
             /// <param name="value">値</param>
             /// <returns>SQLリテラル値表記</returns>
@@ -40,6 +40,27 @@ namespace DapperAid
                 // Microsoft Accessはミリ秒以下未対応
                 return "#" + value.ToString("yyyy-MM-dd HH:mm:ss") + "#";
             }
+#if NET6_0_OR_GREATER
+            /// <summary>
+            /// 引数で指定された日付値をMicrosoft AccessにおけるSQLリテラル値表記へと変換します。
+            /// </summary>
+            /// <param name="value">値</param>
+            /// <returns>SQLリテラル値表記</returns>
+            public override string ToSqlLiteral(DateOnly value)
+            {
+                return "#" + value.ToString("yyyy-MM-dd") + "#";
+            }
+            /// <summary>
+            /// 引数で指定された時刻値をMicrosoft AccessにおけるSQLリテラル値表記へと変換します。
+            /// </summary>
+            /// <param name="value">値</param>
+            /// <returns>SQLリテラル値表記</returns>
+            public override string ToSqlLiteral(TimeOnly value)
+            {
+                // Microsoft Accessはミリ秒以下未対応
+                return "#" + value.ToString("HH:mm:ss") + "#";
+            }
+#endif
 
             /// <summary>自動連番値を取得するSQL句として、セミコロンで区切った別のSQL文を付加します。</summary>
             protected override string GetInsertedIdReturningSql<T>(TableInfo.Column column)

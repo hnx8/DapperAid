@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Data;
-using System.Linq;
+using System.Data.Common;
 using System.Linq.Expressions;
 
 namespace DapperAid
@@ -14,6 +14,32 @@ namespace DapperAid
         #region DB接続ごとに別々のQueryBuilderオブジェクトを使用できるようにするためのメソッド等 -----------------
         /// <summary>DB接続文字列と使用するQueryBuilderオブジェクトの紐づけ</summary>
         private static readonly Dictionary<string, QueryBuilder> s_queryBuilders = new();
+        /// <summary>DB接続確立後の接続文字列の紐づけ</summary>
+        private static readonly Dictionary<string, string> s_queryStrings = new();
+
+        private static void AddStateChangeEvent(this IDbConnection connection)
+        {
+            if (connection.State.HasFlag(ConnectionState.Open))
+            {
+                // すでにDB接続確立済ならその接続文字列をMapに登録
+                s_queryStrings[connection.ConnectionString] = connection.ConnectionString;
+            }
+            else if (connection is DbConnection con && !s_queryStrings.ContainsKey(con.ConnectionString))
+            {
+                // ※DB接続Open前後でConnectionStringの取得値が変化することがありうるのでOpen後の接続文字列とOpen前の接続文字列の対比もMapに追加登録
+                var oldConnectionString = con.ConnectionString;
+                void Handler(object sender, StateChangeEventArgs e)
+                {
+                    if (con.State.HasFlag(ConnectionState.Open))
+                    {
+                        con.StateChange -= Handler;
+                        s_queryStrings[oldConnectionString] = oldConnectionString;
+                        s_queryStrings[con.ConnectionString] = oldConnectionString;
+                    }
+                }
+                con.StateChange += Handler;
+            }
+        }
 
         /// <summary>
         /// このDB接続（DB接続文字列）でDapperAidを利用する際のSQL生成QueryBuilderオブジェクトを指定します。
@@ -26,6 +52,7 @@ namespace DapperAid
         public static void UseDapperAid(this IDbConnection connection, QueryBuilder queryBuilderInstance)
         {
             MapDapperAid(queryBuilderInstance, connection.ConnectionString);
+            AddStateChangeEvent(connection);
         }
 
         /// <summary>
@@ -48,20 +75,17 @@ namespace DapperAid
         /// <returns>SQL生成QueryBuilderオブジェクト</returns>
         public static QueryBuilder GetDapperAidQueryBuilder(this IDbConnection connection)
         {
-            return GetDapperAidQueryBuilder(connection.ConnectionString);
-        }
-
-        /// <summary>
-        /// 指定されたDB接続文字列のDBConnectionで利用するSQL生成QueryBuilderオブジェクトを取得します。
-        /// </summary>
-        /// <param name="connectionString">DB接続文字列</param>
-        /// <returns>SQL生成QueryBuilderオブジェクト</returns>
-        public static QueryBuilder GetDapperAidQueryBuilder(string connectionString)
-        {
-            return s_queryBuilders.TryGetValue(connectionString, out var instance)
-                ? instance
-                : QueryBuilder.DefaultInstance
-                ?? throw new InvalidOperationException("DapperAid's QueryBuilder is not configured for this DBConnection.");
+            if (s_queryStrings.TryGetValue(connection.ConnectionString, out var connectionString))
+            {   // DB接続確立確認後のconnectionStringが登録済なら該当のQueryBuilderを返す
+                return s_queryBuilders[connectionString];
+            }
+            if (s_queryBuilders.TryGetValue(connection.ConnectionString, out var instance))
+            {   // DB接続確立確認前のconnectionStringが登録済ならイベントフックをつけて返す
+                AddStateChangeEvent(connection);
+                return instance;
+            }
+            return QueryBuilder.DefaultInstance
+                ?? throw new InvalidOperationException("DapperAid's QueryBuilder is not initialized.");
         }
         #endregion -----------------------------------------------------------------------------------------
 
@@ -159,6 +183,37 @@ namespace DapperAid
         }
 
         /// <summary>
+        /// 指定されたテーブルからレコードを取得します。
+        /// </summary>
+        /// <param name="connection">DB接続</param>
+        /// <param name="where">レコード絞り込み条件（絞り込みを行わない場合はnull）</param>
+        /// <param name="otherClauses">SQL文の末尾に付加するforUpdate指定などがあれば、その内容</param>
+        /// <param name="timeout">タイムアウト時間</param>
+        /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
+        /// <returns>取得したレコード（１件）</returns>
+        public static T SelectFirst<T>(this IDbConnection connection, Expression<Func<T, bool>>? where = null, string? otherClauses = null, int? timeout = null)
+            where T : notnull
+        {
+            return new QueryRunner(connection, timeout).SelectFirst<T, T>(where, otherClauses);
+        }
+
+        /// <summary>
+        /// 指定されたテーブルからレコードを取得します。
+        /// </summary>
+        /// <param name="connection">DB接続</param>
+        /// <param name="where">レコード絞り込み条件（絞り込みを行わない場合はnull）</param>
+        /// <param name="targetColumns">値取得対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
+        /// <param name="otherClauses">SQL文の末尾に付加するforUpdate指定などがあれば、その内容</param>
+        /// <param name="timeout">タイムアウト時間</param>
+        /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
+        /// <returns>取得したレコード（１件）</returns>
+        public static T SelectFirst<T>(this IDbConnection connection, Expression<Func<T, bool>>? where, Expression<Func<T, dynamic>>? targetColumns, string? otherClauses = null, int? timeout = null)
+            where T : notnull
+        {
+            return new QueryRunner(connection, timeout).SelectFirst<T>(where, targetColumns, otherClauses);
+        }
+
+        /// <summary>
         /// 指定されたテーブルからレコードのリストを取得します。
         /// </summary>
         /// <param name="connection">DB接続</param>
@@ -190,6 +245,23 @@ namespace DapperAid
             where TColumns : notnull
         {
             return new QueryRunner(connection, timeout).SelectFirstOrDefault<TFrom, TColumns>(where, otherClauses);
+        }
+
+        /// <summary>
+        /// 指定されたテーブルからレコードを取得します。
+        /// </summary>
+        /// <param name="connection">DB接続</param>
+        /// <param name="where">レコード絞り込み条件（絞り込みを行わない場合はnull）</param>
+        /// <param name="otherClauses">SQL文の末尾に付加するforUpdate指定などがあれば、その内容</param>
+        /// <param name="timeout">タイムアウト時間</param>
+        /// <typeparam name="TFrom">取得対象テーブルにマッピングされた型</typeparam>
+        /// <typeparam name="TColumns">取得対象列にマッピングされた型</typeparam>
+        /// <returns>取得したレコード（１件）</returns>
+        public static TColumns SelectFirst<TFrom, TColumns>(this IDbConnection connection, Expression<Func<TFrom, bool>>? where = null, string? otherClauses = null, int? timeout = null)
+            where TFrom : notnull
+            where TColumns : notnull
+        {
+            return new QueryRunner(connection, timeout).SelectFirst<TFrom, TColumns>(where, otherClauses);
         }
 
 

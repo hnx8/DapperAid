@@ -76,48 +76,39 @@ class Member
 
 ## Initializing
 ```cs
-using System.Collections.Generic;
-using System.Data;
 using DapperAid;
-```
-```cs
-IDbConnection connection = GetYourDbConnection();
-```
-### Creating QueryBuilder
-```cs
+
 QueryBuilder queryBuilderInstance = new QueryBuilder.Sqlite(); // (example for SQLite)
 ```
-<a name="querybuilders"></a>First, create instance corresponding to your DBMS from below.
+Create an instance corresponding to your DBMS from below.
+<a id="querybuilders"></a>
   - new QueryBuilder.Oracle()
   - new QueryBuilder.MySql()
   - new QueryBuilder.Postgres()
   - new QueryBuilder.SQLite()
   - new QueryBuilder.SqlServer()
-  - new QueryBuilder.MsAccess() -- can also be used for SQLServerCompact
+  - new QueryBuilder.MsAccess()
   - new QueryBuilder.DB2()
 
   These instance generates appropriate SQL statement for your DBMS.  
   (You can also customize the QueryBuilder class as needed)
 
-### Associate with Db connection
-Next, link the QueryBuilder to the DbConnection. 
+  If you want to tie an instance only to a specific DB connection, write as follows.
 ```cs
 // When linking with a DB connection object
 connection.UseDapperAid(queryBuilderInstance);
-```
-```cs
-// When linking with a DB connection string
-queryBuilderInstance.MapDbConnectionString("YourDbConncetionString");
-```
-- In previous versions: link the QueryBuilder for all DB connections.
-  ```cs
-  QueryBuilder.DefaultInstance = queryBuilderInstance;
-  // This writing style is still in effect for compatibility.
-  ```
-Then you can execute these extension method described below.
 
+// When linking with a DB connection string
+queryBuilderInstance.MapDbConnectionString(yourDbDataSource.ConnectionString);
+```
 
 ## Executing CRUD 
+```cs
+using System.Collections.Generic;
+using System.Data;
+
+IDbConnection connection;
+```
 ### `Select<T>([ where[, targetColumns][, otherClauses]])` : returns list&lt;T&gt;
 ```cs
     IReadOnlyList<Member> list1 = connection.Select<Member>();
@@ -145,9 +136,13 @@ Then you can execute these extension method described below.
     // -> select "Id", "Name" from Members where Phone_No is not null
     //           ORDER BY Name LIMIT 5 OFFSET 10
 ```
+### `SelectFirst<T>([ where[, targetColumns][, otherClauses]])` : returns one row or exception
 ### `SelectFirstOrDefault<T>([ where[, targetColumns][, otherClauses]])` : returns one row or null
 ```cs
-    Member? first1 = connection.SelectFirstOrDefault<Member>();
+    Member first1 = connection.SelectFirst<Member>();
+    // -> Execute connection.QueryFirst<Member>(sql) instead of connection.Query<Member>(sql).
+
+    Member? firstOrDefault1 = connection.SelectFirstOrDefault<Member>();
     // -> Execute connection.QueryFirstOrDefault<Member>(sql) instead of connection.Query<Member>(sql).
 ```
 ### `Select<TFrom, TColumns>([ where[, otherClauses]])` : returns list&lt;TColumns&gt;
@@ -165,9 +160,15 @@ Then you can execute these extension method described below.
     // -> select "Name", Phone_No as "Tel", CURRENT_TIMESTAMP as "Now"
     //           from Members where Phone_No is not null order by Id
 ```
+### `SelectFirst<TFrom, TColumns>([ where[, otherClauses]])` : returns one row or exception
 ### `SelectFirstOrDefault<TFrom, TColumns>([ where[, otherClauses]])` : returns one row or null
 ```cs
-    SelColumns? first2 = connection.SelectFirstOrDefault<Member, SelColumns>(
+    SelColumns first2 = connection.SelectFirst<Member, SelColumns>(
+        r => r.Tel == null
+    );
+    // -> Execute connection.QueryFirst<SelColumns>(sql) instead of connection.Query<SelColumns>(sql).
+
+    SelColumns? firstOrDefault2 = connection.SelectFirstOrDefault<Member, SelColumns>(
         r => r.Tel == null
     );
     // -> Execute connection.QueryFirstOrDefault<SelColumns>(sql) instead of connection.Query<SelColumns>(sql).
@@ -242,7 +243,7 @@ Then you can execute these extension method described below.
 - Note: MultiRow-Insert is a SQL92 feature and is supported by DB2, MySQL, PostgreSQL, SQL Server, SQLite (3.7.11 or later), Oracle ("INSERT ALL" statement), and so on. 
 - Note: If there are many records (by default, more than 1000), the query will be executed in multiple statements. You can use the `queryBuilder.MultiInsertRowsPerQuery` property to change the number of records inserted by a single query.
 
-### <a name="insertorupdate">`InsertOrUpdate(record[, insertTargetColumns[, updateTargetColumns]])`</a> : returns 1(inserted or updated row)
+### <a id="insertorupdate"></a>`InsertOrUpdate(record[, insertTargetColumns[, updateTargetColumns]])` : returns 1(inserted or updated row)
 ```cs
     var upsertRow = new Member { Id = 1, Name = "UpsertTest", Tel = "7777" };
     int upsertSingle = connection.InsertOrUpdate(upsertRow);
@@ -490,7 +491,7 @@ If you want to descrive only the value expression, use `SqlExpr.Eval<T>(...)`.
     // --> update TableX set "pw"=CRYPT(@P00,@P01) where ...
 ```
 
-# <a name="attributes"></a>About Table Attributes
+# <a id="attributes"></a>About Table Attributes
 ```cs
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
@@ -560,7 +561,7 @@ using DapperAid.Ddl; // (for extra feature)
 ```
 - Note: You can also specify [Key] for multiple columns (as a composite key)
 
-### <a name="InsertValueattribute">`[InsertValue]`</a> : apply if you want to modify the insert value
+### <a id="InsertValueattribute"></a>`[InsertValue]` : apply if you want to modify the insert value
 ```cs
     [InsertValue("CURRENT_TIMESTAMP")] // Specify the value to set with SQL instead of bind value
     public DateTime CreatedAt { get; set; }
@@ -604,7 +605,7 @@ using DapperAid.Ddl; // (for extra feature)
     [NotMapped] // Do not select, insert, update 
     public Object NotMappedProperty { get; set; }
 ```
-### (for extra feature) <a name="ddlattribute">`[DDL]`</a> : apply if you want to specify database column types, constraints, default values, etc.
+### (for extra feature) <a id="ddlattribute"></a>`[DDL]` : apply if you want to specify database column types, constraints, default values, etc.
 ```cs
     [DDL("NUMERIC(5) DEFAULT 0 NOT NULL")]
     public int Value { get; set; }
@@ -614,6 +615,19 @@ using DapperAid.Ddl; // (for extra feature)
     //      : 
 ```
 # Misc.
+## when the error "The value of type (TypeName) cannot be represented as a sql literal." occured
+- Call `QueryBuilder.AddSqlLiteralConverter()` to specify the function that converts the data value to an SQL representation.
+```cs
+using NetTopologySuite.Geometries;
+
+    var queryBuilderInstance = new QueryBuilder.Postgres();
+    // Here is an example of geometry type SQL.
+    queryBuilderInstance.AddSqlLiteralConverter<Geometry>(geom =>
+    {
+        var binaryHex = string.Concat(geom.AsBinary().Select(b => $"{b:X2}"));
+        return $"'{binaryHex}'::geometry";
+    });
+```
 ## When you want to execute a query during transaction.
 - use extension methods in `IDbTransaction`. 
 It provides the same method as the `IDbConnection` extension method.

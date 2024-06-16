@@ -79,6 +79,19 @@ namespace DapperAid
             /// </summary>
             public override string BuildWhereIn(Dapper.DynamicParameters parameters, TableInfo.Column column, bool opIsNot, object values)
             {
+                if (values.GetType().IsArray && values.GetType().GetElementType() is Type enumType && enumType.IsEnum)
+                {
+                    // ※バインドしようとしている配列値の型がEnumの場合はバインドに失敗してしまうのでキャストする
+                    var underlyingType = Enum.GetUnderlyingType(enumType);
+                    var oldValues = (Array)values;
+                    var newValues = Array.CreateInstance(underlyingType, oldValues.Length);
+                    for(var i=0;i<oldValues.Length;i++)
+                    {
+                        newValues.SetValue(Convert.ChangeType(oldValues.GetValue(i), underlyingType),i);
+                    }
+                    values = newValues;
+                }
+
                 return column.Name + (opIsNot ? "<>" : "=") + "any(" + AddParameter(parameters, column.PropertyInfo.Name, values) + ")";
                 // ※postgresの場合はinと同じ結果が得られるany演算子で代替する（配列パラメータサポートの副作用でin条件のパラメータが展開されず、SQLも展開されないため）
             }

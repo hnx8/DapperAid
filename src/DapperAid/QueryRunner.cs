@@ -116,6 +116,24 @@ namespace DapperAid
         }
 
         /// <summary>
+        /// 指定されたテーブルからレコードを取得します。
+        /// </summary>
+        /// <param name="where">レコード絞り込み条件（絞り込みを行わない場合はnull）</param>
+        /// <param name="targetColumns">値取得対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
+        /// <param name="otherClauses">SQL文の末尾に付加するorderBy条件/limit/offset/forUpdate指定などがあれば、その内容</param>
+        /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
+        /// <returns>取得したレコード（１件）</returns>
+        public T SelectFirst<T>(Expression<Func<T, bool>>? where = null, Expression<Func<T, dynamic>>? targetColumns = null, string? otherClauses = null)
+            where T : notnull
+        {
+            var parameters = new DynamicParameters();
+            var sql = this.Builder.BuildSelect<T>(targetColumns)
+                + this.Builder.BuildWhere(parameters, where)
+                + this.Builder.BuildSelectOrderByEtc(targetColumns, otherClauses);
+            return this.Connection.QueryFirst<T>(sql, parameters, this.Transaction, this.Timeout);
+        }
+
+        /// <summary>
         /// 指定されたテーブルからレコードのリストを取得します。
         /// </summary>
         /// <param name="where">レコード絞り込み条件（絞り込みを行わず全件対象とする場合はnull）</param>
@@ -151,6 +169,25 @@ namespace DapperAid
                 + this.Builder.BuildWhere(parameters, where)
                 + this.Builder.BuildSelectOrderByEtc<TFrom, TColumns>(otherClauses);
             return this.Connection.QueryFirstOrDefault<TColumns>(sql, parameters, this.Transaction, this.Timeout);
+        }
+
+        /// <summary>
+        /// 指定されたテーブルからレコードを取得します。
+        /// </summary>
+        /// <param name="where">レコード絞り込み条件（絞り込みを行わない場合はnull）</param>
+        /// <param name="otherClauses">SQL文の末尾に付加するforUpdate指定などがあれば、その内容</param>
+        /// <typeparam name="TFrom">取得対象テーブルにマッピングされた型</typeparam>
+        /// <typeparam name="TColumns">取得対象列にマッピングされた型</typeparam>
+        /// <returns>取得したレコード（１件）</returns>
+        public TColumns SelectFirst<TFrom, TColumns>(Expression<Func<TFrom, bool>>? where = null, string? otherClauses = null)
+            where TFrom : notnull
+            where TColumns : notnull
+        {
+            var parameters = new DynamicParameters();
+            var sql = this.Builder.BuildSelect<TFrom, TColumns>()
+                + this.Builder.BuildWhere(parameters, where)
+                + this.Builder.BuildSelectOrderByEtc<TFrom, TColumns>(otherClauses);
+            return this.Connection.QueryFirst<TColumns>(sql, parameters, this.Transaction, this.Timeout);
         }
 
         /// <summary>

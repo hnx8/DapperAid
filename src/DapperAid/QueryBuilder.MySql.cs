@@ -17,27 +17,7 @@ namespace DapperAid
             /// 文字列リテラルのエスケープにバックスラッシュを使用しない設定であれば、trueを指定します。
             /// デフォルトはfalseです。
             /// </summary>
-            public bool NO_BACKSLASH_ESCAPES { get; set; }
-
-            /// <summary>
-            /// インスタンスを初期化します。
-            /// </summary>
-            public MySql()
-            {
-                NO_BACKSLASH_ESCAPES = false;
-            }
-
-            /// <summary>
-            /// インスタンスを初期化します。
-            /// </summary>
-            /// <param name="isAnsiMode">未使用の引数です</param>
-            /// <param name="sqlMaxLength">未使用の引数です</param>
-            [Obsolete("ソースコード改善により引数付きコンストラクタは使用されなくなりました")]
-            public MySql(bool isAnsiMode = true, int sqlMaxLength = 16000000)
-                : this()
-            {
-                // 仕様変更により初期化処理消滅
-            }
+            public bool NO_BACKSLASH_ESCAPES { get; set; } = false;
 
             /// <summary>SQL識別子（テーブル名/カラム名等）をエスケープします。MySQL系では「`]を使用します。</summary>
             public override string EscapeIdentifier(string identifier)
@@ -81,7 +61,7 @@ namespace DapperAid
             }
 
             /// <summary>
-            /// 引数で指定された日付値をMySQL系におけるSQLリテラル値表記へと変換します。
+            /// 引数で指定された日時値をMySQL系におけるSQLリテラル値表記へと変換します。
             /// </summary>
             /// <param name="value">値</param>
             /// <returns>SQLリテラル値表記</returns>
@@ -90,6 +70,26 @@ namespace DapperAid
                 // DATETIME/TIMESTAMP両方に対応させる意図であえて型を明示しない文字列表記とする
                 return "'" + value.ToString("yyyy-MM-dd HH:mm:ss.ffffff") + "'";
             }
+#if NET6_0_OR_GREATER
+            /// <summary>
+            /// 引数で指定された日付値をMySQL系におけるSQLリテラル値表記へと変換します
+            /// </summary>
+            /// <param name="value">値</param>
+            /// <returns>SQLリテラル値表記</returns>
+            public override string ToSqlLiteral(DateOnly value)
+            {
+                return "'" + value.ToString("yyyy-MM-dd") + "'";
+            }
+            /// <summary>
+            /// 引数で指定された時刻値をMySQL系におけるSQLリテラル値表記へと変換します
+            /// </summary>
+            /// <param name="value">値</param>
+            /// <returns>SQLリテラル値表記</returns>
+            public override string ToSqlLiteral(TimeOnly value)
+            {
+                return "'" + value.ToString("HH:mm:ss.ffffff") + "'";
+            }
+#endif
 
             /// <summary>自動連番値を取得するSQL句として、セミコロンで区切った別のSQL文を付加します。</summary>
             protected override string GetInsertedIdReturningSql<T>(TableInfo.Column column)

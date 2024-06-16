@@ -24,7 +24,7 @@ namespace DapperAid.Ddl
         /// <param name="specifics">指定内容。プロパティへの指定例：「<c>varchar2(20) default 'x' not null</c>」、クラスへの指定例：「<c>foreign key (c1,c2) references mastertbl(c1,c2)</c>」</param>
         public DDLAttribute(string specifics)
         {
-            this.Specifics = specifics;
+            Specifics = specifics;
         }
 
         #region 開発/テスト向け支援機能 ----------------------------------------
@@ -44,10 +44,26 @@ namespace DapperAid.Ddl
         /// <para>(5)FK指定等  ：クラスに対し指定された[Ddl("制約各種(foreignKey/unique等)")]属性の内容</para>
         /// </remarks>
         public static string GenerateCreateSQL<T>(QueryBuilder? queryBuilder = null)
-            where T : notnull
+            where T : notnull => GenerateCreateSQL(typeof(T), queryBuilder);
+
+        /// <summary>
+        /// テーブルマッピングクラスの定義内容をもとに、CreateTableのSQLを生成します。
+        /// </summary>
+        /// <param name="type">テーブルにマッピングされた型</param>
+        /// <param name="queryBuilder">通常はnull、カラム名等のエスケープルールが特殊なDBMS(Access等)の場合はそのDBMSに応じたQueryBuilderオブジェクト</param>
+        /// <returns>SQL文</returns>
+        /// <remarks>
+        /// 以下の設定内容をもとにSQLが生成されます。
+        /// <para>(1)テーブル名：クラス名または[Table("テーブル名")]属性の指定内容</para>
+        /// <para>(2)カラム名  ：プロパティ名または[Column("カラム名")]属性の指定内容</para>
+        /// <para>(3)カラム型等：プロパティに対し指定された[DDL("データ型 制約各種(default/notNull/check等")]属性の内容</para>
+        /// <para>(4)PK指定    ：[Key]属性が指定されたすべてのプロパティをPrimaryKeyとして取り扱う</para>
+        /// <para>(5)FK指定等  ：クラスに対し指定された[Ddl("制約各種(foreignKey/unique等)")]属性の内容</para>
+        /// </remarks>
+        public static string GenerateCreateSQL(Type type, QueryBuilder? queryBuilder = null)
         {
-            var builder = (queryBuilder ?? QueryBuilder.DefaultInstance);
-            var table = builder.GetTableInfo<T>();
+            var builder = queryBuilder ?? QueryBuilder.DefaultInstance;
+            var table = builder.GetTableInfo(type);
 
             var sb = new StringBuilder();
             sb.Append("create table " + table.Name + " (");
@@ -76,11 +92,11 @@ namespace DapperAid.Ddl
                     delimiter = ", ";
                     sb.Append(' ').Append(column.Name);
                 }
-                sb.Append(")");
+                sb.Append(')');
                 delimiter = ",";
             }
             // その他表制約を生成
-            foreach (var tableAttr in typeof(T).GetCustomAttributes<DDLAttribute>(true))
+            foreach (var tableAttr in type.GetCustomAttributes<DDLAttribute>(true))
             {
                 sb.AppendLine(delimiter);
                 delimiter = ",";
@@ -106,14 +122,14 @@ namespace DapperAid.Ddl
         public static string GenerateTableDefTSV<T>(QueryBuilder? queryBuilder = null)
             where T : notnull
         {
-            var builder = (queryBuilder ?? QueryBuilder.DefaultInstance);
+            var builder = queryBuilder ?? QueryBuilder.DefaultInstance;
             var table = builder.GetTableInfo<T>();
 
             Func<string, string> escape = (s) =>
             {
-                return (string.IsNullOrWhiteSpace(s)
+                return string.IsNullOrWhiteSpace(s)
                     ? string.Empty
-                    : s.Replace('\t', ' ').Replace("\r\n", " ").Replace('\r', ' ').Replace('\n', ' ').Trim());
+                    : s.Replace('\t', ' ').Replace("\r\n", " ").Replace('\r', ' ').Replace('\n', ' ').Trim();
             };
 
             var sb = new StringBuilder();
@@ -131,25 +147,25 @@ namespace DapperAid.Ddl
             foreach (var column in table.Columns.Where(c => c.IsKey || c.Select || c.Insert || c.Update))
             {
                 sb.Append("\tColumn:");
-                sb.Append("\t");
+                sb.Append('\t');
                 sb.Append(string.Join("/",
                     column.PropertyInfo.GetCustomAttributes<System.ComponentModel.DataAnnotations.DisplayAttribute>(true).Select(a => a.Name).ToArray()));
-                sb.Append("\t");
+                sb.Append('\t');
                 sb.Append(column.PropertyInfo.Name);
-                sb.Append("\t");
+                sb.Append('\t');
                 sb.Append(column.PropertyInfo.PropertyType.ToString());
-                sb.Append("\t");
+                sb.Append('\t');
                 sb.Append(
                     (column.IsKey ? "Key" : (column.ConcurrencyCheck ? "ConcurrencyCheck" : ""))
                     + (table.RetrieveInsertedIdColumn == column ? "(ID)" : ""));
-                sb.Append("\t");
+                sb.Append('\t');
                 sb.Append(column.Alias == null ? column.PropertyInfo.Name : escape(column.Name));
-                sb.Append("\t");
+                sb.Append('\t');
                 sb.Append(string.Join("/",
                     column.PropertyInfo.GetCustomAttributes<DDLAttribute>(true).Select(a => a.Specifics).ToArray()));
-                sb.Append("\t");
+                sb.Append('\t');
                 sb.Append(column.Insert ? escape(column.InsertSQL ?? ("@" + column.PropertyInfo.Name)) : "(default)");
-                sb.Append("\t");
+                sb.Append('\t');
                 sb.Append(column.Update ? escape(column.UpdateSQL ?? ("@" + column.PropertyInfo.Name)) : "(notupdate)");
                 sb.AppendLine();
             }

@@ -13,7 +13,7 @@ namespace DapperAid
         public class SqlServer : QueryBuilder
         {
             /// <summary>
-            /// 引数で指定された日付値をSqlServerにおけるSQLリテラル値表記へと変換します。
+            /// 引数で指定された日時値をSqlServerにおけるSQLリテラル値表記へと変換します。
             /// </summary>
             /// <param name="value">値</param>
             /// <returns>SQLリテラル値表記</returns>
@@ -22,6 +22,28 @@ namespace DapperAid
                 // datetime型へキャスト
                 return "CAST('" + value.ToString("yyyy-MM-dd HH:mm:ss.fff") + "' AS datetime)";
             }
+#if NET6_0_OR_GREATER
+            /// <summary>
+            /// 引数で指定された日付値をSqlServerにおけるSQLリテラル値表記へと変換します。
+            /// </summary>
+            /// <param name="value">値</param>
+            /// <returns>SQLリテラル値表記</returns>
+            public override string ToSqlLiteral(DateOnly value)
+            {
+                // date型へキャスト
+                return "CAST('" + value.ToString("yyyy-MM-dd") + "' AS date)";
+            }
+            /// <summary>
+            /// 引数で指定された時刻値をSqlServerにおけるSQLリテラル値表記へと変換します。
+            /// </summary>
+            /// <param name="value">値</param>
+            /// <returns>SQLリテラル値表記</returns>
+            public override string ToSqlLiteral(TimeOnly value)
+            {
+                // time型へキャスト
+                return "CAST('" + value.ToString("HH:mm:ss.ffffff") + "' AS time)";
+            }
+#endif
 
             /// <summary>自動連番値を取得するSQL句として、セミコロンで区切った別のSQL文を付加します。</summary>
             protected override string GetInsertedIdReturningSql<T>(TableInfo.Column column)

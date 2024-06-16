@@ -20,7 +20,7 @@ namespace DapperAid
             public override string FalseLiteral { get { return "0"; } }
 
             /// <summary>
-            /// 引数で指定された日付値をSQLiteにおけるSQLリテラル値表記へと変換します。
+            /// 引数で指定された日時値をSQLiteにおけるSQLリテラル値表記へと変換します。
             /// </summary>
             /// <param name="value">値</param>
             /// <returns>SQLリテラル値表記</returns>
@@ -29,6 +29,28 @@ namespace DapperAid
                 // SQLiteはdatetime関数でキャスト
                 return "datetime('" + value.ToString("yyyy-MM-dd HH:mm:ss.fff") + "')";
             }
+#if NET6_0_OR_GREATER
+            /// <summary>
+            /// 引数で指定された日付値をSQLiteにおけるSQLリテラル値表記へと変換します。
+            /// </summary>
+            /// <param name="value">値</param>
+            /// <returns>SQLリテラル値表記</returns>
+            public override string ToSqlLiteral(DateOnly value)
+            {
+                // SQLiteはdate関数でキャスト
+                return "date('" + value.ToString("yyyy-MM-dd") + "')";
+            }
+            /// <summary>
+            /// 引数で指定された時刻値をSQLiteにおけるSQLリテラル値表記へと変換します。
+            /// </summary>
+            /// <param name="value">値</param>
+            /// <returns>SQLリテラル値表記</returns>
+            public override string ToSqlLiteral(TimeOnly value)
+            {
+                // SQLiteはtime関数でキャスト
+                return "time('" + value.ToString("HH:mm:ss.fff") + "')";
+            }
+#endif
 
             /// <summary>自動連番値を取得するSQL句として、セミコロンで区切った別のSQL文を付加します。</summary>
             protected override string GetInsertedIdReturningSql<T>(TableInfo.Column column)

@@ -103,6 +103,37 @@ namespace DapperAid
         }
 
         /// <summary>
+        /// 指定されたテーブルからレコードを非同期で取得します。
+        /// </summary>
+        /// <param name="connection">DB接続</param>
+        /// <param name="where">レコード絞り込み条件（絞り込みを行わない場合はnull）</param>
+        /// <param name="otherClauses">SQL文の末尾に付加するforUpdate指定などがあれば、その内容</param>
+        /// <param name="timeout">タイムアウト時間</param>
+        /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
+        /// <returns>取得したレコード（１件）</returns>
+        public static Task<T> SelectFirstAsync<T>(this IDbConnection connection, Expression<Func<T, bool>>? where = null, string? otherClauses = null, int? timeout = null)
+            where T : notnull
+        {
+            return new QueryRunner(connection, timeout).SelectFirstAsync<T, T>(where, otherClauses);
+        }
+
+        /// <summary>
+        /// 指定されたテーブルからレコードを非同期で取得します。
+        /// </summary>
+        /// <param name="connection">DB接続</param>
+        /// <param name="where">レコード絞り込み条件（絞り込みを行わない場合はnull）</param>
+        /// <param name="targetColumns">値取得対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
+        /// <param name="otherClauses">SQL文の末尾に付加するforUpdate指定などがあれば、その内容</param>
+        /// <param name="timeout">タイムアウト時間</param>
+        /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
+        /// <returns>取得したレコード（１件）</returns>
+        public static Task<T> SelectFirstAsync<T>(this IDbConnection connection, Expression<Func<T, bool>>? where, Expression<Func<T, dynamic>>? targetColumns, string? otherClauses = null, int? timeout = null)
+            where T : notnull
+        {
+            return new QueryRunner(connection, timeout).SelectFirstAsync<T>(where, targetColumns, otherClauses);
+        }
+
+        /// <summary>
         /// 指定されたテーブルからレコードのリストを非同期で取得します。
         /// </summary>
         /// <param name="connection">DB接続</param>
@@ -134,6 +165,23 @@ namespace DapperAid
             where TColumns : notnull
         {
             return new QueryRunner(connection, timeout).SelectFirstOrDefaultAsync<TFrom, TColumns>(where, otherClauses);
+        }
+
+        /// <summary>
+        /// 指定されたテーブルからレコードを非同期で取得します。
+        /// </summary>
+        /// <param name="connection">DB接続</param>
+        /// <param name="where">レコード絞り込み条件（絞り込みを行わない場合はnull）</param>
+        /// <param name="otherClauses">SQL文の末尾に付加するforUpdate指定などがあれば、その内容</param>
+        /// <param name="timeout">タイムアウト時間</param>
+        /// <typeparam name="TFrom">取得対象テーブルにマッピングされた型</typeparam>
+        /// <typeparam name="TColumns">取得対象列にマッピングされた型</typeparam>
+        /// <returns>取得したレコード（１件）</returns>
+        public static Task<TColumns> SelectFirstAsync<TFrom, TColumns>(this IDbConnection connection, Expression<Func<TFrom, bool>>? where = null, string? otherClauses = null, int? timeout = null)
+            where TFrom : notnull
+            where TColumns : notnull
+        {
+            return new QueryRunner(connection, timeout).SelectFirstAsync<TFrom, TColumns>(where, otherClauses);
         }
 
 

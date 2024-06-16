@@ -1,12 +1,12 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFrameworks>net5;net45;netstandard2.1;netstandard2.0;</TargetFrameworks>
+    <TargetFrameworks>net6;net5;net45;netstandard2.1;netstandard2.0;</TargetFrameworks>
     <CheckEolTargetFramework>false</CheckEolTargetFramework>
     <LangVersion>10</LangVersion>
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <PropertyGroup>
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
     <Authors>hnx8(H.Takahashi)</Authors>
     <Copyright>Copyright (C) hnx8(H.Takahashi)</Copyright>
     <PackageProjectUrl>https://github.com/hnx8/DapperAid</PackageProjectUrl>

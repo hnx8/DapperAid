@@ -19,13 +19,13 @@ namespace DapperAid
     public abstract partial class QueryBuilder
     {
         /// <summary>
-        /// DB接続（DB接続文字列）毎のQueryBuilderオブジェクトを紐づけない場合の
         /// DapperAidの拡張メソッドで使用する既定のQueryBuilderオブジェクトです。
         /// </summary>
-        public static QueryBuilder DefaultInstance
+        public static QueryBuilder DefaultInstance { get; set; } = null!;
+
+        protected QueryBuilder()
         {
-            get => IDbConnectionExtensions.GetDapperAidQueryBuilder(nameof(DefaultInstance));
-            set => IDbConnectionExtensions.MapDapperAid(value, nameof(DefaultInstance));
+            DefaultInstance ??= this; // 既定のQueryBuilderオブジェクトが未設定なら設定
         }
 
         /// <summary>
@@ -139,8 +139,14 @@ namespace DapperAid
             }
             if (value is string s) { return ToSqlLiteral(s); }
             if (value is DateTime dt) { return ToSqlLiteral(dt); }
+#if NET6_0_OR_GREATER
+            if (value is DateOnly date) { return ToSqlLiteral(date); }
+            if (value is TimeOnly time) { return ToSqlLiteral(time); }
+#endif
             if (value is bool b) { return (b ? TrueLiteral : FalseLiteral); }
             if (value is Enum e) { return e.ToString("d"); }
+            if (value is char ch) { return ToSqlLiteral($"{ch}"); }
+            if (value is IConvertible) { return value.ToString()!; }
             if (value is byte[] blob) { return ToSqlLiteral(blob); }
             if (value is System.Collections.IEnumerable ienumerable && value.GetType().GetInterfaces().Any(t => t.IsConstructedGenericType && t.GetGenericTypeDefinition() == typeof(ICollection<>)))
             {
@@ -155,7 +161,7 @@ namespace DapperAid
                 sb.Append("]");
                 return sb.ToString();
             }
-            return value.ToString() ?? throw new ArgumentException($"The value of type {value.GetType().FullName} cannot be represented as a sql literal.");
+            throw new ArgumentException($"The value of type {value.GetType().FullName} cannot be represented as a sql literal.");
         }
         /// <summary>
         /// 引数で指定された文字列値をSQLリテラル値表記へと変換します。
@@ -168,7 +174,7 @@ namespace DapperAid
             return (IsNull(value) ? "null" : "'" + value.Replace("'", "''") + "'");
         }
         /// <summary>
-        /// 引数で指定された日付値をSQLリテラル値表記へと変換します。
+        /// 引数で指定された日時値をSQLリテラル値表記へと変換します。
         /// </summary>
         /// <param name="value">値</param>
         /// <returns>SQLリテラル値表記</returns>
@@ -178,6 +184,30 @@ namespace DapperAid
             // 以下の書式はPostgreSQL,Oracle,DB2向け。SQLite/SqlServerはdatetime、Accessは#日時#、MySqlは文字列表記
             return "timestamp '" + value.ToString("yyyy-MM-dd HH:mm:ss.ffffff") + "'";
         }
+#if NET6_0_OR_GREATER
+        /// <summary>
+        /// 引数で指定された日付値をSQLリテラル値表記へと変換します。
+        /// </summary>
+        /// <param name="value">値</param>
+        /// <returns>SQLリテラル値表記</returns>
+        /// <remarks>DBMSによりリテラル値表記が異なります。</remarks>
+        public virtual string ToSqlLiteral(DateOnly value)
+        {
+            // 以下の書式はPostgreSQL,Oracle,DB2向け。SQLite/SqlServerはdate、Accessは#日付#、MySqlは文字列表記
+            return $"date '{value:yyyy-MM-dd}'";
+        }
+        /// <summary>
+        /// 引数で指定された時刻値をSQLリテラル値表記へと変換します。
+        /// </summary>
+        /// <param name="value">値</param>
+        /// <returns>SQLリテラル値表記</returns>
+        /// <remarks>DBMSによりリテラル値表記が異なります。</remarks>
+        public virtual string ToSqlLiteral(TimeOnly value)
+        {
+            // 以下の書式はPostgreSQL,Oracle,DB2向け。SQLite/SqlServerはtime、Accessは#時刻#、MySqlは文字列表記
+            return $"time '{value:HH:mm:ss.ffffff}'";
+        }
+#endif
         /// <summary>
         /// 引数で指定されたblob値をSQLリテラル値表記へと変換します。
         /// </summary>
