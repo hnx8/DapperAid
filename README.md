@@ -144,6 +144,11 @@ IDbConnection connection;
 
     Member? firstOrDefault1 = connection.SelectFirstOrDefault<Member>();
     // -> Execute connection.QueryFirstOrDefault<Member>(sql) instead of connection.Query<Member>(sql).
+
+    Member? selectForUpdate = connection.SelectFirst<Member>(
+        r => r.Id == 1,
+        otherClauses: "FOR UPDATE");
+    // -> select (all columns) from Members where "Id"=@Id FOR UPDATE
 ```
 ### `Select<TFrom, TColumns>([ where[, otherClauses]])` : returns list&lt;TColumns&gt;
 ```cs
@@ -515,6 +520,9 @@ using DapperAid.Ddl; // (for extra feature)
 ```cs
     [SelectSql(Beginning = "SELECT DISTINCT")] // customize the beginning of select sql
     // -> SELECT DISTINCT ... from ....
+
+    [SelectSql(BaseWhereClauses = "deleted_at IS NULL")] // append where condition of select sql
+    // -> select ... from .... where deleted_at IS NULL and .....
 
     [SelectSql(GroupByKey = true)] // generate group-by clause
     // -> select ... from ... where ... GROUP BY (colums with [Key] attributes)

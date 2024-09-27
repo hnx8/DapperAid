@@ -37,6 +37,7 @@ namespace DapperAid
         /// <param name="otherClauses">SQL文の末尾に付加するforUpdate指定などがあれば、その内容</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>取得したレコード（１件、レコード不存在の場合はnull）</returns>
+        [Obsolete("Use “SelectFirstOrDefaultAsync()” instead.")]
         public async Task<T?> SelectAsync<T>(Expression<Func<T>> keyValues, Expression<Func<T, dynamic>>? targetColumns = null, string? otherClauses = null)
             where T : notnull
         {

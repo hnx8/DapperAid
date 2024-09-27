@@ -34,6 +34,7 @@ namespace DapperAid
         /// <param name="timeout">タイムアウト時間</param>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <returns>取得したレコード（１件、レコード不存在の場合はnull）</returns>
+        [Obsolete("Use “SelectFirstOrDefaultAsync()” instead.")]
         public static Task<T?> SelectAsync<T>(this IDbConnection connection, Expression<Func<T>> keyValues, Expression<Func<T, dynamic>>? targetColumns = null, string? otherClauses = null, int? timeout = null)
             where T : notnull
         {
@@ -243,25 +244,6 @@ namespace DapperAid
             where T : notnull
         {
             return new QueryRunner(connection, timeout).InsertAndRetrieveIdAsync(data, targetColumns);
-        }
-
-        /// <summary>
-        /// 指定されたレコードを非同期で挿入します。
-        /// </summary>
-        /// <param name="connection">DB接続</param>
-        /// <param name="data">挿入するレコード</param>
-        /// <param name="targetColumns">値設定対象カラムを限定する場合は、対象カラムについての匿名型を返すラムダ式。例：「<c>t => new { t.Col1, t.Col2 }</c>」</param>
-        /// <param name="retrieveInsertedId">[InsertSQL(RetrieveInsertedId = true)]属性で指定された自動連番カラムについて、挿入時に採番されたIDを当該プロパティにセットする場合は、trueを指定</param>
-        /// <param name="timeout">タイムアウト時間</param>
-        /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
-        /// <returns>挿入された行数</returns>
-        [Obsolete("retrieveInsertedId引数なしのInsert/InsertAndRetrieveIdメソッドを使用してください。")]
-        public static Task<int> InsertAsync<T>(this IDbConnection connection, T data, Expression<Func<T, dynamic>> targetColumns, bool retrieveInsertedId, int? timeout = null)
-            where T : notnull
-        {
-            return (retrieveInsertedId)
-                ? InsertAndRetrieveIdAsync(connection, data, targetColumns, timeout)
-                : InsertAsync(connection, data, targetColumns, timeout);
         }
 
         /// <summary>

@@ -23,9 +23,12 @@ namespace DapperAid
         /// </summary>
         public static QueryBuilder DefaultInstance { get; set; } = null!;
 
+        /// <summary>
+        /// (protected) インスタンス生成時、既定のQueryBuilderオブジェクトが未設定ならこのインスタンスを既定オブジェクトとみなして設定します
+        /// </summary>
         protected QueryBuilder()
         {
-            DefaultInstance ??= this; // 既定のQueryBuilderオブジェクトが未設定なら設定
+            DefaultInstance ??= this;
         }
 
         /// <summary>
@@ -875,7 +878,7 @@ namespace DapperAid
 
 
         /// <summary>
-        /// 指定された条件のカラムによるWhere句を生成します。
+        /// (更新SQL向け)指定された条件のカラムによるWhere句を生成します。
         /// </summary>
         /// <typeparam name="T">テーブルにマッピングされた型</typeparam>
         /// <param name="data">Where条件対象カラムに値が設定されているオブジェクト</param>
@@ -922,6 +925,11 @@ namespace DapperAid
         {
             var tableInfo = GetTableInfo<T>();
             var sb = new StringBuilder();
+            if (!string.IsNullOrEmpty(tableInfo.SelectSqlInfo?.BaseWhereClauses))
+            {
+                sb.Append(" where " + tableInfo.SelectSqlInfo?.BaseWhereClauses);
+            }
+
             // ローカルメソッド：where/and条件を組み立てる
             void bindWhere(TableInfo.Column column, object? value)
             {
@@ -983,12 +991,15 @@ namespace DapperAid
         public string BuildWhere<T>(DynamicParameters parameters, Expression<Func<T, bool>>? where)
             where T : notnull
         {
-            if (where == null)
-            {
-                return string.Empty;
-            }
             var tableInfo = GetTableInfo<T>();
-            return " where " + BuildWhere(parameters, tableInfo, where.Body);
+            var buildedClauses = (where is null) ? null : BuildWhere(parameters, tableInfo, where.Body);
+            return (tableInfo.SelectSqlInfo?.BaseWhereClauses is string baseClauses)
+                ? (buildedClauses is not null)
+                    ? $" where {baseClauses} and {buildedClauses}"
+                    : $" where {baseClauses}"
+                : (buildedClauses is not null)
+                    ? $" where {buildedClauses}"
+                    : string.Empty;
         }
 
         /// <summary>
